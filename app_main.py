@@ -1,6 +1,5 @@
 import os
 import json
-import sys
 import customtkinter as ctk
 from tkinter import ttk, messagebox
 import threading
@@ -19,11 +18,11 @@ class AppSincronizador(ctk.CTk):
 
         # Configurações de Janela
         self.title("Sincronizador Unificado de Portais e Editais")
-        self.geometry("1100x700")
-        self.minsize(950, 550)
+        self.geometry("1100x750") 
+        self.minsize(950, 600)
 
-        # Layout Principal (Dividido em Topo, Centro e Base)
-        self.grid_rowconfigure(1, weight=1)
+        # Layout Principal Simplificado (Aba agora expande totalmente)
+        self.grid_rowconfigure(1, weight=1) # Apenas as abas ocupam o centro com peso máximo
         self.grid_columnconfigure(0, weight=1)
 
         # ------------------ PAINEL SUPERIOR (Controles) ------------------
@@ -61,12 +60,16 @@ class AppSincronizador(ctk.CTk):
         
         self.tab_resultados = self.abas.add("📊 Editais Encontrados")
         self.tab_logs = self.abas.add("📋 Console de Varredura")
-        self.tab_config = self.abas.add("⚙️ Configurações do Sistema")  # <--- NOVA ABA
+        self.tab_config = self.abas.add("⚙️ Configurações do Sistema")
 
-        # Configuração da Aba de Resultados (Tabela)
-        self.tab_resultados.grid_rowconfigure(0, weight=1)
+        # Configuração Interna da Aba de Resultados (Dividida em 2 Linhas: Tabela e Resumo)
+        self.tab_resultados.grid_rowconfigure(0, weight=3) # Linha 0: Tabela (maior)
+        self.tab_resultados.grid_rowconfigure(1, weight=2) # Linha 1: Painel de Leitura (menor)
         self.tab_resultados.grid_columnconfigure(0, weight=1)
+        
+        # Monta a tabela e o painel de leitura embutidos na aba
         self.configurar_tabela_resultados()
+        self.configurar_painel_leitura_embutido()
 
         # Configuração da Aba de Logs
         self.txt_logs = ctk.CTkTextbox(self.tab_logs, font=("Consolas", 12))
@@ -77,7 +80,7 @@ class AppSincronizador(ctk.CTk):
 
         # ------------------ PAINEL INFERIOR (Status) ------------------
         self.frame_base = ctk.CTkFrame(self, height=35, corner_radius=0)
-        self.frame_base.grid(row=2, column=0, sticky="ew")
+        self.frame_base.grid(row=2, column=0, sticky="ew") # Agora fica na linha 2 do app geral
         
         self.lbl_status = ctk.CTkLabel(
             self.frame_base, 
@@ -86,7 +89,8 @@ class AppSincronizador(ctk.CTk):
         )
         self.lbl_status.pack(side="left", padx=15, pady=5)
 
-        # CRIAÇÃO ANTECIPADA: Garante a existência do arquivo na pasta de execução (ex: Downloads)
+        # Inicialização do JSON
+        import config
         caminho_json = config.CAMINHO_JSON_HISTORICO
         if not os.path.exists(caminho_json):
             try:
@@ -96,13 +100,48 @@ class AppSincronizador(ctk.CTk):
                 print(f"Erro inicializacao JSON: {e}")
 
         self.atualizar_tabela_local()
-    def configurar_aba_configuracoes(self):
-        """Constrói os formulários de edição de variáveis e salvamento dinâmico."""
-        self.tab_config.grid_columnconfigure(0, weight=1)
+
+    def configurar_painel_leitura_embutido(self):
+        """Cria a área de leitura detalhada acoplada na parte inferior da aba de Resultados."""
+        # Colocamos o frame apontando para self.tab_resultados e na linha 1 (row=1)
+        self.frame_detalhes = ctk.CTkFrame(self.tab_resultados, corner_radius=10)
+        self.frame_detalhes.grid(row=1, column=0, padx=5, pady=(10, 5), sticky="nsew")
         
-        # Container da API Key
-        frame_api = ctk.CTkFrame(self.tab_config, corner_radius=8)
-        frame_api.pack(fill="x", padx=15, pady=10)
+        self.lbl_detalhes_titulo = ctk.CTkLabel(
+            self.frame_detalhes, 
+            text="📖 Resumo Ampliado do Edital Selecionado (Clique em um item da tabela acima para ler)", 
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#1f6aa5"
+        )
+        self.lbl_detalhes_titulo.pack(anchor="w", padx=15, pady=8)
+
+        # Caixa de texto rica com quebra de linha por palavra automática
+        self.txt_detalhes_escopo = ctk.CTkTextbox(
+            self.frame_detalhes, 
+            font=("Arial", 13), 
+            wrap="word", 
+            border_width=1,
+            border_color="#3a3d42"
+        )
+        self.txt_detalhes_escopo.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        self.txt_detalhes_escopo.insert("1.0", "Nenhum edital selecionado no momento.")
+        self.txt_detalhes_escopo.configure(state="disabled")
+
+
+    def configurar_aba_configuracoes(self):
+        """Constrói os formulários de edição com rolagem para evitar que componentes sumam."""
+        self.tab_config.grid_columnconfigure(0, weight=1)
+        self.tab_config.grid_rowconfigure(0, weight=1)
+        
+        # CONTAINER PRINCIPAL COM ROLAGEM AUTOMÁTICA (CTkScrollableFrame)
+        canvas_config = ctk.CTkScrollableFrame(self.tab_config, corner_radius=0, fg_color="transparent")
+        canvas_config.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        canvas_config.grid_columnconfigure(0, weight=1)
+        
+        # 1. Container da API Key
+        frame_api = ctk.CTkFrame(canvas_config, corner_radius=8)
+        # CORREÇÃO: Removido o fill="x" do grid. O sticky="ew" cuida de esticar horizontalmente.
+        frame_api.grid(row=0, column=0, padx=15, pady=10, sticky="ew")
         
         lbl_api = ctk.CTkLabel(frame_api, text="Chave de API do Gemini (Google AI Studio):", font=ctk.CTkFont(weight="bold"))
         lbl_api.pack(anchor="w", padx=15, pady=(10, 2))
@@ -111,9 +150,10 @@ class AppSincronizador(ctk.CTk):
         self.txt_api_key.pack(anchor="w", padx=15, pady=(0, 15))
         self.txt_api_key.insert(0, config.API_KEY_GEMINI)
         
-        # Container das Palavras-Chave
-        frame_palavras = ctk.CTkFrame(self.tab_config, corner_radius=8)
-        frame_palavras.pack(fill="both", expand=True, padx=15, pady=10)
+        # 2. Container das Palavras-Chave
+        frame_palavras = ctk.CTkFrame(canvas_config, corner_radius=8)
+        # CORREÇÃO: Removido o fill="x" do grid aqui também.
+        frame_palavras.grid(row=1, column=0, padx=15, pady=10, sticky="ew")
         
         lbl_palavras = ctk.CTkLabel(
             frame_palavras, 
@@ -122,22 +162,25 @@ class AppSincronizador(ctk.CTk):
         )
         lbl_palavras.pack(anchor="w", padx=15, pady=(10, 2))
         
-        self.txt_palavras = ctk.CTkTextbox(frame_palavras, font=("Arial", 12))
-        self.txt_palavras.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        # Altura fixa definida para a caixa de texto para não quebrar o layout
+        self.txt_palavras = ctk.CTkTextbox(frame_palavras, font=("Arial", 12), height=150)
+        self.txt_palavras.pack(fill="x", padx=15, pady=(0, 15)) # Aqui o pack aceita o fill normalmente!
         
-        # Converte a lista atual do config em texto separado por vírgulas para exibição
         texto_inicial_palavras = ", ".join(config.PALAVRAS_CHAVE)
         self.txt_palavras.insert("1.0", texto_inicial_palavras)
         
-        # Botão de Ação de Gravação
+        # 3. Botão de Ação de Gravação
         self.btn_salvar_config = ctk.CTkButton(
-            self.tab_config,
+            canvas_config,
             text="💾 Salvar Configurações",
             font=ctk.CTkFont(size=14, weight="bold"),
             fg_color="#1f6aa5",
+            hover_color="#144d78",
+            height=40,
             command=self.acao_salvar_configuracoes
         )
-        self.btn_salvar_config.pack(pady=15)
+        self.btn_salvar_config.grid(row=2, column=0, pady=20)
+
 
     def acao_salvar_configuracoes(self):
         """Captura os valores da tela, atualiza a memória ativa do config e grava no JSON."""
@@ -164,8 +207,9 @@ class AppSincronizador(ctk.CTk):
             messagebox.showerror("Erro I/O", "O Windows impediu a gravação do arquivo de configurações.")
 
     def configurar_tabela_resultados(self):
-        """Monta o Treeview para exibição dos editais de forma limpa."""
-        colunas = ("portal", "datas", "pesquisa", "subvencao", "escopo")
+        """Monta o Treeview para exibição simplificada dos editais."""
+        # Definimos apenas as 3 colunas essenciais
+        colunas = ("portal", "datas", "palavra_chave")
         
         estilo = ttk.Style()
         estilo.theme_use("clam")
@@ -175,24 +219,63 @@ class AppSincronizador(ctk.CTk):
 
         self.tabela = ttk.Treeview(self.tab_resultados, columns=colunas, show="headings", style="Treeview")
         
+        # Cabeçalhos simplificados
         self.tabela.heading("portal", text="Portal")
         self.tabela.heading("datas", text="Prazo / Submissão")
-        self.tabela.heading("pesquisa", text="Linha de Pesquisa")
-        self.tabela.heading("subvencao", text="Orçamento / Subvenção")
-        self.tabela.heading("escopo", text="Resumo do Escopo Técnico")
+        self.tabela.heading("palavra_chave", text="Palavra-Chave Gatilho")
 
-        self.tabela.column("portal", width=130, anchor="w")
-        self.tabela.column("datas", width=140, anchor="center")
-        self.tabela.column("pesquisa", width=180, anchor="w")
-        self.tabela.column("subvencao", width=180, anchor="w")
-        self.tabela.column("escopo", width=400, anchor="w")
+        # Ajuste de larguras para preencher bem o espaço horizontal
+        self.tabela.column("portal", width=250, anchor="w")
+        self.tabela.column("datas", width=200, anchor="center")
+        self.tabela.column("palavra_chave", width=350, anchor="w")
 
         scroll_y = ttk.Scrollbar(self.tab_resultados, orient="vertical", command=self.tabela.yview)
         self.tabela.configure(yscrollcommand=scroll_y.set)
         
         self.tabela.grid(row=0, column=0, sticky="nsew")
         scroll_y.grid(row=0, column=1, sticky="ns")
+        
+        # Eventos vinculados
+        self.tabela.bind("<<TreeviewSelect>>", self.evento_linha_selecionada)
         self.tabela.bind("<Double-1>", self.abrir_link_edital)
+
+    def evento_linha_selecionada(self, event):
+        """Gatilho acionado ao selecionar uma linha. Lê os metadados ocultos da tag."""
+        item_selecionado = self.tabela.selection()
+        if not item_selecionado:
+            return
+
+        # Recupera as tags guardadas na linha clicada
+        tags = self.tabela.item(item_selecionado, "tags")
+        if len(tags) >= 2:
+            try:
+                # Reconverte a string oculta de volta para um dicionário Python
+                edital = json.loads(tags[1])
+                
+                portal = edital.get("portal", edital.get("Portal", "N/A"))
+                prazo = edital.get("datas", edital.get("Prazo / Submissão", "Não encontrada"))
+                linha_pesquisa = edital.get("pesquisa", edital.get("Linha de Pesquisa", "Não encontrada"))
+                subvencao = edital.get("subvencao", edital.get("Orçamento / Subvenção", "Não encontrada"))
+                resumo_completo = edital.get("escopo", edital.get("Resumo do Escopo Técnico", edital.get("Resumo do Escopo", "Não encontrado")))
+                
+                # Monta a ficha de leitura rica e organizada na área de texto inferior
+                texto_formatado = (
+                    f"🏛️ PORTAL DE ORIGEM: {portal}\n"
+                    f"📅 PRAZO DE SUBMISSÃO: {prazo}\n"
+                    f"🧬 LINHA DE PESQUISA: {linha_pesquisa}\n"
+                    f"💰 ORÇAMENTO / SUBVENÇÃO: {subvencao}\n"
+                    f"-------------------------------------------------------------------------------------------------------\n\n"
+                    f"📝 RESUMO DO ESCOPO TÉCNICO COMPLETO:\n{resumo_completo}"
+                )
+                
+                self.txt_detalhes_escopo.configure(state="normal")
+                self.txt_detalhes_escopo.delete("1.0", "end")
+                self.txt_detalhes_escopo.insert("1.0", texto_formatado)
+                self.txt_detalhes_escopo.configure(state="disabled")
+                
+            except Exception as err:
+                print(f"Erro ao decodificar dados do painel: {err}")
+
 
     def logs_callback(self, mensagem):
         """Injeta mensagens vindas do backend em tempo real no console visual."""
@@ -232,7 +315,7 @@ class AppSincronizador(ctk.CTk):
         messagebox.showinfo("Varredura Completa", "A busca terminou! Os novos editais compatíveis já foram processados.")
 
     def atualizar_tabela_local(self):
-        """Lê o arquivo JSON unificado estruturado e renderiza na Grid."""
+        """Lê o arquivo JSON unificado estruturado e renderiza na Grid simplificada."""
         for item in self.tabela.get_children():
             self.tabela.delete(item)
 
@@ -247,13 +330,18 @@ class AppSincronizador(ctk.CTk):
             editais_ordenados = sorted(editais, key=lambda x: x.get("prazo_ISO", "9999-12-31 23:59"))
 
             for edital in editais_ordenados:
+                # Recupera o termo gatilho que salvamos no JSON provisório ou assume padrão
+                termo = edital.get("palavra_chave", "Nativa do Portal")
+                if "texto_extracao" in edital and not termo:
+                    termo = "Aguardando Varredura..."
+
+                # Insere apenas os 3 valores visíveis
                 self.tabela.insert("", "end", values=(
                     edital.get("portal", edital.get("Portal", "N/A")),
                     edital.get("datas", edital.get("Prazo / Submissão", "Não encontrada")),
-                    edital.get("pesquisa", edital.get("Linha de Pesquisa", "Não encontrada")),
-                    edital.get("subvencao", edital.get("Orçamento / Subvenção", "Não encontrada")),
-                    edital.get("escopo", edital.get("Resumo do Escopo Técnico", edital.get("Resumo do Escopo", "Não encontrado")))
-                ), tags=(edital.get("url", ""),))
+                    termo
+                ), tags=(edital.get("url", ""), json.dumps(edital))) # Guardamos o JSON completo stringificado na tag[1]
+                
         except Exception as e:
             self.logs_callback(f"[X] Erro ao carregar histórico na tabela visual: {e}")
 
