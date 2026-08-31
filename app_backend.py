@@ -2,7 +2,6 @@ import time, requests, traceback, unicodedata, sys
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -43,19 +42,22 @@ def rodar_automacao_unificada(callback_fim, log):
                             if link and link.has_attr("href"):
                                 url_completa = urljoin(cfg["url"], link["href"])
                                 log(f"        Acessando edital: {url_completa}")
-                                # ADICIONE O PARAMETRO 'log' NO FINAL AQUI TAMBÉM:
-                                if web_utils.processar_pagina_interna(url_completa, cfg["ignorar_links"], nome, log): 
+                                
+                                # >>> CORREÇÃO AQUI: Passando a variável 'palavra' no final <<<
+                                if web_utils.processar_pagina_interna(url_completa, cfg["ignorar_links"], nome, log, palavra): 
                                     break
 
             except Exception as e: 
                 log(f"    [X] Erro estatico {nome}: {e}")
 
-        # --- PARTE 2: PORTAIS DINÂMICOS (Fundep e Finep) ---
+
+                # --- PARTE 2: PORTAIS DINÂMICOS (Fundep e Finep) ---
         for nome, cfg in config.SITES_DINAMICOS.items():
             log(f"\n===> Verificando portal dinâmico: {nome}")
             nav = None
             
             try:
+                # 🌐 TENTATIVA 1: CONFIGURAÇÃO E EXECUÇÃO DO GOOGLE CHROME
                 opt_chrome = webdriver.ChromeOptions()
                 opt_chrome.add_argument("--headless=new")
                 opt_chrome.add_argument("--no-sandbox")
@@ -63,33 +65,43 @@ def rodar_automacao_unificada(callback_fim, log):
                 opt_chrome.add_argument("--disable-gpu")
                 opt_chrome.add_argument("--remote-allow-origins=*")
                 opt_chrome.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                
+                # Injeta a proteção de janela para evitar travamentos com --windowed
+                from selenium.webdriver.chrome.service import Service as ChromeService
                 servico_chrome = ChromeService()
-                if getattr(sys, 'frozen', False): # Verifica se o app está rodando compilado (.exe)
-                    servico_chrome.creation_flags = 0x08000000 # Impede a janela preta do chromedriver.exe de piscar
-                    
+                if getattr(sys, 'frozen', False):
+                    servico_chrome.creation_flags = 0x08000000
+                
                 nav = webdriver.Chrome(options=opt_chrome, service=servico_chrome)
                 log("    [🌐] Navegador Google Chrome iniciado com sucesso.")
+                
             except Exception as err_chrome:
                 log(f"    [⚠️] Não foi possível iniciar o Chrome. Motivo: {err_chrome}")
                 log("    [🔄] Acionando contingência: Tentando abrir com Microsoft Edge...")
+                
                 try:
+                    # 🌐 TENTATIVA 2: CONFIGURAÇÃO E EXECUÇÃO DO MICROSOFT EDGE (CORRIGIDO)
                     from selenium.webdriver.edge.options import Options as EdgeOptions
+                    from selenium.webdriver.edge.service import Service as EdgeService
+                    
                     opt_edge = EdgeOptions()
-                    opt_edge.add_argument("--headless=new")
+                    opt_edge.add_argument("--headless=new") # Força execução oculta estável
                     opt_edge.add_argument("--no-sandbox")
                     opt_edge.add_argument("--disable-dev-shm-usage")
                     opt_edge.add_argument("--disable-gpu")
                     opt_edge.add_argument("--remote-allow-origins=*")
                     opt_edge.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                    from selenium.webdriver.edge.service import Service as EdgeService
+                    
+                    # CORREÇÃO ESSENCIAL: Cria o serviço nativo ocultando a janela invisível do Edge Driver
                     servico_edge = EdgeService()
                     if getattr(sys, 'frozen', False):
-                        servico_edge.creation_flags = 0x08000000
-
+                        servico_edge.creation_flags = 0x08000000 # Impede o msedgedriver.exe de quebrar
+                        
                     nav = webdriver.Edge(options=opt_edge, service=servico_edge)
-                    log("    [🌐] Navegador Microsoft Edge iniciado com sucesso.")
+                    log("    [🌐] Navegador Microsoft Edge iniciado com sucesso de forma portátil.")
+                    
                 except Exception as err_edge:
-                    log(f"    [X] Erro Crítico: Nenhum navegador compatível (Chrome/Edge) foi localizado.\nErro: {err_edge}")
+                    log(f"    [X] Erro Crítico: Nenhum navegador compatível (Chrome/Edge) pôde ser inicializado nesta máquina. {err_edge}")
                     continue 
 
             wait = WebDriverWait(nav, 30)
@@ -148,10 +160,13 @@ def rodar_automacao_unificada(callback_fim, log):
                     # Processa as URLs únicas coletadas nesta página específica
                     if urls_validas_pagina:
                         log(f"    [~] Detectados {len(urls_validas_pagina)} editais compatíveis na página {p_at}. Filtrando histórico...")
+                        
+                        # O loop abaixo extrai a URL e o termo guardado dentro do dicionário
                         for url_unica, termo_ativado in urls_validas_pagina.items():
                             log(f"    [✓] Termo gatilho: '{termo_ativado}' -> Avaliando: {url_unica}")
-                            # PASSE O PARAMETRO 'log' NO FINAL DA FUNÇÃO ABAIXO:
-                            web_utils.processar_pagina_interna(url_unica, cfg["ignorar_links"], nome, log)
+                            
+                            # >>> CORREÇÃO AQUI: Passando 'termo_ativado' no final do método <<<
+                            web_utils.processar_pagina_interna(url_unica, cfg["ignorar_links"], nome, log, termo_ativado)
 
                     if p_at < cfg["max_paginas"]:
                         prox = p_at + 1
