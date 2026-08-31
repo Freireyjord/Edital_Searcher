@@ -1,12 +1,12 @@
-import os, time, requests, traceback, re, unicodedata
+import time, requests, traceback, unicodedata, sys
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import config, web_utils
+import config, web_utils, processador
 
 def remover_acentos(texto):
     if not texto: return ""
@@ -63,7 +63,11 @@ def rodar_automacao_unificada(callback_fim, log):
                 opt_chrome.add_argument("--disable-gpu")
                 opt_chrome.add_argument("--remote-allow-origins=*")
                 opt_chrome.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                nav = webdriver.Chrome(options=opt_chrome)
+                servico_chrome = ChromeService()
+                if getattr(sys, 'frozen', False): # Verifica se o app está rodando compilado (.exe)
+                    servico_chrome.creation_flags = 0x08000000 # Impede a janela preta do chromedriver.exe de piscar
+                    
+                nav = webdriver.Chrome(options=opt_chrome, service=servico_chrome)
                 log("    [🌐] Navegador Google Chrome iniciado com sucesso.")
             except Exception as err_chrome:
                 log(f"    [⚠️] Não foi possível iniciar o Chrome. Motivo: {err_chrome}")
@@ -77,10 +81,15 @@ def rodar_automacao_unificada(callback_fim, log):
                     opt_edge.add_argument("--disable-gpu")
                     opt_edge.add_argument("--remote-allow-origins=*")
                     opt_edge.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                    nav = webdriver.Edge(options=opt_edge)
+                    from selenium.webdriver.edge.service import Service as EdgeService
+                    servico_edge = EdgeService()
+                    if getattr(sys, 'frozen', False):
+                        servico_edge.creation_flags = 0x08000000
+
+                    nav = webdriver.Edge(options=opt_edge, service=servico_edge)
                     log("    [🌐] Navegador Microsoft Edge iniciado com sucesso.")
                 except Exception as err_edge:
-                    log(f"    [X] Erro Crítico: Nenhum navegador compatível (Chrome/Edge) foi localizado.")
+                    log(f"    [X] Erro Crítico: Nenhum navegador compatível (Chrome/Edge) foi localizado.\nErro: {err_edge}")
                     continue 
 
             wait = WebDriverWait(nav, 30)
@@ -227,6 +236,10 @@ def rodar_automacao_unificada(callback_fim, log):
             finally: 
                 try: nav.quit()
                 except: pass
+                
+        # >>> ADICIONE ESTA LINHA AQUI, NO FINAL DE TODAS AS VARREDURAS DE SITES <<<
+        processador.consumir_fila_pendente_ia(log)
+
     except Exception as e: 
         traceback.print_exc()
     
