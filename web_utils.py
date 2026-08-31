@@ -28,7 +28,7 @@ def verificar_se_ja_existe(url_alvo):
         return any(i["url"] == url_alvo for i in hist)
     except: return False
 
-def processar_pagina_interna(url_edital, ignorar_links, nome_portal, log_func):
+def processar_pagina_interna(url_edital, ignorar_links, nome_portal, log_func, termo_ativado):
     if verificar_se_ja_existe(url_edital): 
         log_func(f"        [🛑 SKIPPED] Link '{url_edital}' já mapeado no sistema.")
         return True
@@ -66,14 +66,21 @@ def processar_pagina_interna(url_edital, ignorar_links, nome_portal, log_func):
             # ENFILEIRAMENTO: Salva no JSON com a flag especial de IA pendente
             with banco_dados_lock:
                 # Armazena o texto bruto coletado temporariamente dentro do JSON para a IA ler depois
+                # Dentro do web_utils.py (função processar_pagina_interna):
                 dados_provisorios = {
-                    "portal": nome_portal, "url": url_edital, "pdf": f"editais_baixados/{nome_pdf}" if pdf_proc else "",
-                    "datas": "Aguardando fila de IA...", "pesquisa": "Aguardando processamento...",
-                    "subvencao": "Aguardando processamento...", "escopo": "Processando na Fila...",
+                    "portal": nome_portal, 
+                    "url": url_edital, 
+                    "pdf": f"editais_baixados/{nome_pdf}" if pdf_proc else "",
+                    "datas": "Aguardando fila de IA...", 
+                    "pesquisa": "Aguardando processamento...",
+                    "subvencao": "Aguardando processamento...", 
+                    "escopo": "Processando na Fila...",
                     "prazo_ISO": "9999-12-31 23:59",
-                    "status_ia": "pendente", # Flag de controle da esteira
-                    "texto_extracao": txt_bruto  # Guardamos o texto para a IA ler sequencialmente
+                    "status_ia": "pendente",
+                    "texto_extracao": txt_bruto,
+                    "palavra_chave": termo_ativado # <--- CERTIFIQUE-SE DE ESTAR SALVANDO O TERMO AQUI!
                 }
+
                 
                 arq = config.CAMINHO_JSON_HISTORICO
                 hist = []
