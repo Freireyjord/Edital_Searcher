@@ -3,16 +3,17 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 import config, web_utils
 
+NOME_PORTAL = "CNPq - Chamadas Abertas"
+URL_BASE = "https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao"
+TAG_TITULO = "h4"
+IGNORAR_LINKS = []
+
 def varrer(log, atualizar_tabela_func):
-    nome = "CNPq - Chamadas Abertas"
-    cfg = config.SITES_ESTATICOS[nome]
-    log(f"===> Verificando portal estático: {nome}")
-    
+    log(f"===> Verificando portal estático: {NOME_PORTAL}")
     try:
-        resp = requests.get(cfg["url"], timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        resp = requests.get(URL_BASE, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         html = BeautifulSoup(resp.text, "html.parser")
-        chamadas = html.find_all(cfg["tag_titulo"])
-        log(f"    -> Encontrados {len(chamadas)} itens na página base.")
+        chamadas = html.find_all(TAG_TITULO)
         
         for ch in chamadas:
             txt_bruto = ch.get_text()
@@ -22,16 +23,14 @@ def varrer(log, atualizar_tabela_func):
             txt_normalizado = txt_bruto.lower()
             
             for palavra in config.PALAVRAS_CHAVE:
-                palavra_limpa = palavra.lower()
-                radical = palavra_limpa[:-1] if len(palavra_limpa) > 5 else palavra_limpa
-                
+                radical = palavra.lower()[:-1] if len(palavra) > 5 else palavra.lower()
                 if radical in txt_normalizado:
-                    log(f"    [✓] Termo '{palavra}' casou no CNPq!")
-                    link = ch.find("a") if ch.name == cfg["tag_titulo"] else ch.find_next("a")
+                    link = ch.find("a") if ch.name == TAG_TITULO else ch.find_next("a")
                     if link and link.has_attr("href"):
-                        url_completa = urljoin(cfg["url"], link["href"])
-                        log(f"        Acessando edital: {url_completa}")
-                        if web_utils.processar_pagina_interna(url_completa, cfg["ignorar_links"], nome, log, palavra, atualizar_tabela_func):
-                            break
+                        url_completa = urljoin(URL_BASE, link["href"])
+                        web_utils.processar_pagina_interna(
+                            url_completa, IGNORAR_LINKS, NOME_PORTAL, log, palavra, atualizar_tabela_func
+                        )
+                        break
     except Exception as e:
-        log(f"    [X] Erro estatico {nome}: {e}")
+        log(f"    [X] Erro no portal {NOME_PORTAL}: {e}")

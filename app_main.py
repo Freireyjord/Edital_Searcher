@@ -133,10 +133,10 @@ class AppSincronizador(ctk.CTk):
         self.txt_detalhes_escopo.configure(state="disabled")
 
     def abrir_popup_filtros(self):
-        """Painel de Filtros com layout lado a lado superior e palavras-chave na metade inferior."""
+        """Painel de Filtros com layout lado a lado superior e sistema de Tags para palavras-chave."""
         popup = ctk.CTkToplevel(self)
         popup.title("Configuracoes de Varredura e Filtros")
-        popup.geometry("680x520")
+        popup.geometry("680x550")
         popup.resizable(False, False)
         popup.transient(self)
         popup.grab_set()
@@ -149,7 +149,7 @@ class AppSincronizador(ctk.CTk):
         frame_superior.pack(fill="x", padx=20, pady=5)
         
         # 1. CANTO SUPERIOR ESQUERDO: Filtro de Datas
-        frame_datas = ctk.CTkFrame(frame_superior, corner_radius=0, border_width=1, border_color="#3a3d42", width=310, height=210)
+        frame_datas = ctk.CTkFrame(frame_superior, corner_radius=0, border_width=1, border_color="#3a3d42", width=310, height=200)
         frame_datas.pack(side="left", fill="both", expand=True, padx=(0, 5))
         frame_datas.pack_propagate(False)
         
@@ -189,18 +189,16 @@ class AppSincronizador(ctk.CTk):
         btn_max.pack(fill="x", padx=15, pady=5)
         
         # 2. CANTO SUPERIOR DIREITO: Filtro de Sites (Portais) com Scrollbar
-        frame_matriz = ctk.CTkFrame(frame_superior, corner_radius=0, border_width=1, border_color="#3a3d42", width=320, height=210)
+        frame_matriz = ctk.CTkFrame(frame_superior, corner_radius=0, border_width=1, border_color="#3a3d42", width=320, height=200)
         frame_matriz.pack(side="right", fill="both", expand=True, padx=(5, 0))
         frame_matriz.pack_propagate(False)
         
-        # Cabeçalho Fixo
         frame_header = ctk.CTkFrame(frame_matriz, height=28, corner_radius=0, fg_color="#1f6aa5")
         frame_header.pack(fill="x", side="top")
         
         lbl_h2 = ctk.CTkLabel(frame_header, text="SELECIONAR PORTAIS DE ORIGEM", font=ctk.CTkFont(family="Arial", size=10, weight="bold"), text_color="white")
         lbl_h2.pack(anchor="w", padx=10, pady=3)
         
-        # Container com Barra de Rolagem Automática (Scrollable)
         scroll_portais = ctk.CTkScrollableFrame(frame_matriz, corner_radius=0, fg_color="transparent")
         scroll_portais.pack(fill="both", expand=True, padx=2, pady=2)
 
@@ -227,27 +225,76 @@ class AppSincronizador(ctk.CTk):
             lbl_pname = ctk.CTkLabel(frame_linha, text=portal_nome.upper(), font=ctk.CTkFont(family="Arial", size=11, weight="bold"), text_color="#e0e0e0")
             lbl_pname.pack(side="left", padx=10, pady=6)
 
-        # --- METADE INFERIOR: Palavras-Chave ---
+        # --- METADE INFERIOR: SISTEMA DE TAGS PARA PALAVRAS-CHAVE ---
         frame_keywords = ctk.CTkFrame(popup, corner_radius=0, border_width=1, border_color="#3a3d42")
         frame_keywords.pack(fill="x", padx=20, pady=10)
         
-        lbl_kw = ctk.CTkLabel(frame_keywords, text="Termos de Busca (Separe as palavras por virgula):", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
+        lbl_kw = ctk.CTkLabel(frame_keywords, text="Termos de Busca (Digite a palavra e pressione Enter/Virgula):", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
         lbl_kw.pack(anchor="w", padx=15, pady=(10, 5))
         
-        txt_pop_palavras = ctk.CTkTextbox(frame_keywords, height=80, corner_radius=0, font=("Arial", 11))
-        txt_pop_palavras.pack(fill="x", padx=15, pady=(0, 12))
-        txt_pop_palavras.insert("1.0", ", ".join(config.PALAVRAS_CHAVE))
+        entry_tag = ctk.CTkEntry(frame_keywords, placeholder_text="Digite aqui uma palavra-chave...", corner_radius=0, font=("Arial", 11))
+        entry_tag.pack(fill="x", padx=15, pady=(0, 5))
+
+        # Container onde as Tags serão desenhadas
+        scroll_tags = ctk.CTkScrollableFrame(frame_keywords, height=90, corner_radius=0, fg_color="#1e1e1e")
+        scroll_tags.pack(fill="x", padx=15, pady=(0, 10))
+
+        # Lista local para gerenciar as palavras
+        lista_tags = list(config.PALAVRAS_CHAVE)
+
+        def renderizar_tags():
+            """Limpa e redesenha todas as tags dentro do container."""
+            for widget in scroll_tags.winfo_children():
+                widget.destroy()
+
+            # Container flexível simples com wrap manual
+            row_frame = ctk.CTkFrame(scroll_tags, fg_color="transparent")
+            row_frame.pack(anchor="w", fill="x")
+
+            for tag_texto in lista_tags:
+                # Bloco/Chip da Tag
+                tag_box = ctk.CTkFrame(row_frame, fg_color="#1f6aa5", corner_radius=12)
+                tag_box.pack(side="left", padx=3, pady=3)
+
+                lbl_t = ctk.CTkLabel(tag_box, text=tag_texto, font=ctk.CTkFont(family="Arial", size=10, weight="bold"), text_color="white")
+                lbl_t.pack(side="left", padx=(8, 4), pady=2)
+
+                # Botão "X" para deletar a tag
+                def remover_tag(t=tag_texto):
+                    if t in lista_tags:
+                        lista_tags.remove(t)
+                        renderizar_tags()
+
+                btn_del = ctk.CTkButton(tag_box, text="✕", width=16, height=16, corner_radius=8, fg_color="transparent", hover_color="#c0392b", font=("Arial", 9, "bold"), command=remover_tag)
+                btn_del.pack(side="right", padx=(0, 4), pady=2)
+
+        def adicionar_tag_evt(event=None):
+            texto = entry_tag.get().strip().replace(",", "")
+            if texto:
+                if texto not in lista_tags:
+                    lista_tags.append(texto)
+                    renderizar_tags()
+                entry_tag.delete(0, "end")
+            return "break" # Impede o bip sonoro do Enter
+
+        # Bind para Enter e Vírgula
+        entry_tag.bind("<Return>", adicionar_tag_evt)
+        entry_tag.bind(",", adicionar_tag_evt)
+
+        # Renderização inicial das palavras já existentes
+        renderizar_tags()
 
         # --- AÇÕES DO POPUP ---
         def aplicar_filtros_acao():
-            texto_p = txt_pop_palavras.get("1.0", "end-1c").strip()
-            novas_palavras = [p.strip() for p in texto_p.split(",") if p.strip()]
-            if not novas_palavras:
+            # Adiciona o texto atual na Entry caso a pessoa não tenha apertado Enter
+            adicionar_tag_evt()
+
+            if not lista_tags:
                 messagebox.showwarning("Aviso", "Defina ao menos uma palavra-chave para continuar.", parent=popup)
                 return
 
             config.PORTAIS_ATIVOS = {k: v.get() for k, v in dic_vars_locais.items()}
-            config.salvar_configuracoes_usuario(config.API_KEY_GEMINI, novas_palavras, config.PORTAIS_ATIVOS)
+            config.salvar_configuracoes_usuario(config.API_KEY_GEMINI, lista_tags, config.PORTAIS_ATIVOS)
             
             self.filtro_portais = config.PORTAIS_ATIVOS
             ativos = ["Filtros em execucao:"]

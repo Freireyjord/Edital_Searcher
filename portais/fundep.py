@@ -6,10 +6,15 @@ from selenium.webdriver.support import expected_conditions as EC
 from urllib.parse import urljoin
 import config, web_utils
 
+NOME_PORTAL = "Fundep - Projetos"
+URL_BASE = "https://fundep.ufmg.br/projetos"
+SELETOR_CARD = "div.MuiGrid-item"
+MAX_PAGINAS = 10
+IGNORAR_LINKS = []
+
+
 def varrer(log, atualizar_tabela_func):
-    nome = "Fundep - Projetos"
-    cfg = config.SITES_DINAMICOS[nome]
-    log(f"\n===> Verificando portal dinâmico: {nome}")
+    log(f"\n===> Verificando portal dinâmico: {NOME_PORTAL}")
     
     nav = None
     try:
@@ -44,11 +49,11 @@ def varrer(log, atualizar_tabela_func):
     try:
         wait = WebDriverWait(nav, 30)
         ant = []
-        nav.get(cfg["url"])
+        nav.get(URL_BASE)
         
-        for p_at in range(1, cfg["max_paginas"] + 1):
-            log(f"    -> Analisando e lendo a página {p_at} de {nome}...")
-            sel = (By.CSS_SELECTOR, cfg["seletor_card"])
+        for p_at in range(1, MAX_PAGINAS + 1):
+            log(f"    -> Analisando e lendo a página {p_at} de {NOME_PORTAL}...")
+            sel = (By.CSS_SELECTOR, SELETOR_CARD)
             try:
                 wait.until(EC.presence_of_element_located(sel))
                 time.sleep(5)
@@ -69,13 +74,13 @@ def varrer(log, atualizar_tabela_func):
                         if radical in texto_card.lower():
                             link = card.find_element(By.TAG_NAME, "a")
                             url = link.get_attribute("href")
-                            if url: urls_validas[urljoin(cfg["url"], url)] = palavra
+                            if url: urls_validas[urljoin(URL_BASE, url)] = palavra
                 except: continue
                 
             for url_u, termo in urls_validas.items():
-                web_utils.processar_pagina_interna(url_u, cfg["ignorar_links"], nome, log, termo, atualizar_tabela_func)
+                web_utils.processar_pagina_interna(url_u, IGNORAR_LINKS, NOME_PORTAL, log, termo, atualizar_tabela_func)
                 
-            if p_at < cfg["max_paginas"]:
+            if p_at < MAX_PAGINAS:
                 try:
                     nav.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                     time.sleep(2)
