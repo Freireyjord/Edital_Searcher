@@ -3,12 +3,17 @@ import json
 import customtkinter as ctk
 from tkinter import ttk, messagebox
 import threading
+from datetime import datetime
+import re
+import sys
 
-# Importação dos módulos locais corrigidos
+# Importação da biblioteca para o calendário financeiro
+from tkcalendar import Calendar
+
 import config
 import app_backend
+import processador
 
-# Configuração estética do CustomTkinter
 ctk.set_appearance_mode("System")  
 ctk.set_default_color_theme("blue")
 
@@ -16,354 +21,387 @@ class AppSincronizador(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # Configurações de Janela
         self.title("Sincronizador Unificado de Portais e Editais")
-        self.geometry("1100x750") 
-        self.minsize(950, 600)
+        self.geometry("1150x760") 
+        self.minsize(1000, 620)
 
-        # Layout Principal Simplificado (Aba agora expande totalmente)
-        self.grid_rowconfigure(1, weight=1) # Apenas as abas ocupam o centro com peso máximo
+        # Variáveis globais de controle do funil de filtros
+        self.filtro_portais = {}      
+        self.filtro_data_min = ""     
+        self.filtro_data_max = ""     
+
+        self.grid_rowconfigure(1, weight=1) 
         self.grid_columnconfigure(0, weight=1)
 
-        # ------------------ PAINEL SUPERIOR (Controles) ------------------
-        self.frame_topo = ctk.CTkFrame(self, corner_radius=10)
+        # ------------------ PAINEL SUPERIOR INDUSTRIAL (CANTOS RETOS) ------------------
+        # Definido corner_radius=0 para eliminar o aspecto arredondado
+        self.frame_topo = ctk.CTkFrame(self, corner_radius=0, border_width=1, border_color="#3a3d42")
         self.frame_topo.grid(row=0, column=0, padx=15, pady=10, sticky="ew")
         
         self.lbl_titulo = ctk.CTkLabel(
-            self.frame_topo, 
-            text="Triagem Inteligente de Editais (CNPq, Fundep, Finep)", 
-            font=ctk.CTkFont(size=18, weight="bold")
+            self.frame_topo, text="PESQUISA INTELIGENTE DE EDITAIS", 
+            font=ctk.CTkFont(family="Arial", size=16, weight="bold")
         )
         self.lbl_titulo.pack(side="left", padx=15, pady=15)
 
-        self.btn_abrir_link = ctk.CTkButton(
-            self.frame_topo,
-            text="🌐 Abrir Link do Edital",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#2b719e",  
-            hover_color="#1f5373",
-            command=self.abrir_link_botao
-        )
-        self.btn_abrir_link.pack(side="right", padx=10, pady=15)
-
+        # Botões com cantos retos (corner_radius=0) e sem emotes
         self.btn_sincronizar = ctk.CTkButton(
-            self.frame_topo,
-            text="🔄 Iniciar Sincronização",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            command=self.acao_sincronizar
+            self.frame_topo, text="SINCRONIZAR PORTAIS", corner_radius=0,
+            font=ctk.CTkFont(family="Arial", size=12, weight="bold"), command=self.acao_sincronizar
         )
         self.btn_sincronizar.pack(side="right", padx=15, pady=15)
 
-        # ------------------ PAINEL CENTRAL (Abas) ------------------
-        self.abas = ctk.CTkTabview(self)
+        self.btn_abrir_link = ctk.CTkButton(
+            self.frame_topo, text="ABRIR EDITAL", corner_radius=0,
+            font=ctk.CTkFont(family="Arial", size=12, weight="bold"),
+            fg_color="#2b719e", hover_color="#1f5373", command=self.abrir_link_botao
+        )
+        self.btn_abrir_link.pack(side="right", padx=10, pady=15)
+        
+        # COMENTE OU ATIVE A LINHA ABAIXO PARA O EXECUTÁVEL COMPARTILHADO DA SUA EQUIPE
+        # self.btn_sincronizar.configure(state="disabled", text="ACESSO CENTRALIZADO")
+
+        # ------------------ PAINEL CENTRAL SIMPLIFICADO ------------------
+        self.abas = ctk.CTkTabview(self, corner_radius=0)
         self.abas.grid(row=1, column=0, padx=15, pady=5, sticky="nsew")
         
-        self.tab_resultados = self.abas.add("📊 Editais Encontrados")
-        self.tab_logs = self.abas.add("📋 Console de Varredura")
-        self.tab_config = self.abas.add("⚙️ Configurações do Sistema")
+        self.tab_resultados = self.abas.add("EDITAIS ENCONTRADOS")
+        self.tab_logs = self.abas.add("CONSOLE DE VARREDURA")
 
-        # Configuração Interna da Aba de Resultados (Dividida em 2 Linhas: Tabela e Resumo)
-        self.tab_resultados.grid_rowconfigure(0, weight=3) # Linha 0: Tabela (maior)
-        self.tab_resultados.grid_rowconfigure(1, weight=2) # Linha 1: Painel de Leitura (menor)
+        self.tab_resultados.grid_rowconfigure(0, weight=1) 
+        self.tab_resultados.grid_rowconfigure(1, weight=4) 
+        self.tab_resultados.grid_rowconfigure(2, weight=3) 
         self.tab_resultados.grid_columnconfigure(0, weight=1)
         
-        # Monta a tabela e o painel de leitura embutidos na aba
+        self.configurar_barra_ferramentas_resultados()
         self.configurar_tabela_resultados()
         self.configurar_painel_leitura_embutido()
 
-        # Configuração da Aba de Logs
-        self.txt_logs = ctk.CTkTextbox(self.tab_logs, font=("Consolas", 12))
+        # Console de logs com fonte monoespaçada limpa
+        self.txt_logs = ctk.CTkTextbox(self.tab_logs, font=("Consolas", 11), corner_radius=0)
         self.txt_logs.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Configuração da Aba de Configurações Visuais
-        self.configurar_aba_configuracoes()
-
-        # ------------------ PAINEL INFERIOR (Status) ------------------
+        # ------------------ PAINEL INFERIOR ------------------
         self.frame_base = ctk.CTkFrame(self, height=35, corner_radius=0)
-        self.frame_base.grid(row=2, column=0, sticky="ew") # Agora fica na linha 2 do app geral
+        self.frame_base.grid(row=2, column=0, sticky="ew") 
         
         self.lbl_status = ctk.CTkLabel(
-            self.frame_base, 
-            text="Sistema Pronto. Clique em sincronizar para iniciar a busca.", 
-            font=ctk.CTkFont(size=12)
+            self.frame_base, text="Status: Sistema operacional. Ajuste os parametros no painel de filtros.", 
+            font=ctk.CTkFont(family="Arial", size=11)
         )
         self.lbl_status.pack(side="left", padx=15, pady=5)
 
-        # Inicialização do JSON
-        import config
-        caminho_json = config.CAMINHO_JSON_HISTORICO
-        if not os.path.exists(caminho_json):
-            try:
-                with open(caminho_json, "w", encoding="utf-8") as f:
-                    json.dump([], f, indent=4, ensure_ascii=False)
-            except Exception as e:
-                print(f"Erro inicializacao JSON: {e}")
-
+        self.mapa_checkboxes_vars = {}
         self.atualizar_tabela_local()
 
-    def configurar_painel_leitura_embutido(self):
-        """Cria a área de leitura detalhada acoplada na parte inferior da aba de Resultados."""
-        # Colocamos o frame apontando para self.tab_resultados e na linha 1 (row=1)
-        self.frame_detalhes = ctk.CTkFrame(self.tab_resultados, corner_radius=10)
-        self.frame_detalhes.grid(row=1, column=0, padx=5, pady=(10, 5), sticky="nsew")
+        self.bloqueio_diario_ativo = False
+        self.after(3000, lambda: threading.Thread(target=self.disparar_esteira_ia_segura, name="esteira_ia_automatica", daemon=True).start())
+        self.ativar_atualizador_ciclico_1min()
+    def configurar_barra_ferramentas_resultados(self):
+        frame_ferramentas = ctk.CTkFrame(self.tab_resultados, height=45, corner_radius=0, fg_color="transparent")
+        frame_ferramentas.grid(row=0, column=0, padx=5, pady=(5, 5), sticky="ew")
         
-        self.lbl_detalhes_titulo = ctk.CTkLabel(
-            self.frame_detalhes, 
-            text="📖 Resumo Ampliado do Edital Selecionado (Clique em um item da tabela acima para ler)", 
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color="#1f6aa5"
+        # Botão de funil sem emoji e com cantos retos
+        self.btn_filtro_funil = ctk.CTkButton(
+            frame_ferramentas, text="CONFIGURAR PARAMETROS E FILTROS", corner_radius=0,
+            font=ctk.CTkFont(family="Arial", size=11, weight="bold"),
+            fg_color="#34495e", hover_color="#2c3e50", width=250, command=self.abrir_popup_filtros
         )
-        self.lbl_detalhes_titulo.pack(anchor="w", padx=15, pady=8)
+        self.btn_filtro_funil.pack(side="left", padx=5, pady=5)
 
-        # Caixa de texto rica com quebra de linha por palavra automática
+        self.lbl_filtros_ativos = ctk.CTkLabel(
+            frame_ferramentas, text="Filtros: Parametros padrao ativos.", 
+            font=ctk.CTkFont(family="Arial", size=11, slant="italic"), text_color="#95a5a6"
+        )
+        self.lbl_filtros_ativos.pack(side="left", padx=15, pady=5)
+
+    def configurar_painel_leitura_embutido(self):
+        self.frame_detalhes = ctk.CTkFrame(self.tab_resultados, corner_radius=0, border_width=1, border_color="#3a3d42")
+        self.frame_detalhes.grid(row=2, column=0, padx=5, pady=(10, 5), sticky="nsew")
+        
+        lbl_titulo = ctk.CTkLabel(
+            self.frame_detalhes, text="RESUMO EXPANDIDO DO EDITAL SELECIONADO", 
+            font=ctk.CTkFont(family="Arial", size=12, weight="bold"), text_color="#1f6aa5"
+        )
+        lbl_titulo.pack(anchor="w", padx=15, pady=8)
+        
         self.txt_detalhes_escopo = ctk.CTkTextbox(
-            self.frame_detalhes, 
-            font=("Arial", 13), 
-            wrap="word", 
-            border_width=1,
-            border_color="#3a3d42"
+            self.frame_detalhes, font=("Arial", 12), wrap="word", corner_radius=0, border_width=1, border_color="#2a2d32"
         )
         self.txt_detalhes_escopo.pack(fill="both", expand=True, padx=15, pady=(0, 15))
-        self.txt_detalhes_escopo.insert("1.0", "Nenhum edital selecionado no momento.")
+        self.txt_detalhes_escopo.insert("1.0", "Nenhum edital selecionado na tabela superior.")
         self.txt_detalhes_escopo.configure(state="disabled")
 
+    def abrir_popup_filtros(self):
+        """Painel de Filtros e Parametros com design estritamente geometrico e alinhamento limpo."""
+        popup = ctk.CTkToplevel(self)
+        popup.title("Configuracoes de Varredura e Filtros")
+        popup.geometry("520x620")
+        popup.resizable(False, False)
+        popup.transient(self)
+        popup.grab_set()
+        
+        lbl_pop_title = ctk.CTkLabel(popup, text="PARAMETROS DE FILTRO E VARREDURA", font=ctk.CTkFont(family="Arial", size=14, weight="bold"))
+        lbl_pop_title.pack(pady=15)
+        
+        # 1. Container: Palavras-Chave
+        frame_keywords = ctk.CTkFrame(popup, corner_radius=0, border_width=1, border_color="#3a3d42")
+        frame_keywords.pack(fill="x", padx=20, pady=6)
+        
+        lbl_kw = ctk.CTkLabel(frame_keywords, text="Termos de Busca (Separe as palavras por virgula):", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
+        lbl_kw.pack(anchor="w", padx=15, pady=(8, 2))
+        
+        txt_pop_palavras = ctk.CTkEntry(frame_keywords, placeholder_text="Ex: veiculo, combustivel, mecanica...", width=440, corner_radius=0)
+        txt_pop_palavras.pack(anchor="w", padx=15, pady=(0, 12))
+        txt_pop_palavras.insert(0, ", ".join(config.PALAVRAS_CHAVE))
+        
+        # 2. Container: Intervalo de Prazos
+        frame_datas = ctk.CTkFrame(popup, corner_radius=0, border_width=1, border_color="#3a3d42")
+        frame_datas.pack(fill="x", padx=20, pady=6)
+        
+        lbl_d = ctk.CTkLabel(frame_datas, text="Filtrar exibicao por intervalo de prazos:", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
+        lbl_d.pack(anchor="w", padx=15, pady=(8, 4))
+        
+        frame_inputs_d = ctk.CTkFrame(frame_datas, fg_color="transparent")
+        frame_inputs_d.pack(fill="x", padx=15, pady=(0, 10))
 
-    def configurar_aba_configuracoes(self):
-        """Constrói os formulários de edição com rolagem para evitar que componentes sumam."""
-        self.tab_config.grid_columnconfigure(0, weight=1)
-        self.tab_config.grid_rowconfigure(0, weight=1)
-        
-        # CONTAINER PRINCIPAL COM ROLAGEM AUTOMÁTICA (CTkScrollableFrame)
-        canvas_config = ctk.CTkScrollableFrame(self.tab_config, corner_radius=0, fg_color="transparent")
-        canvas_config.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        canvas_config.grid_columnconfigure(0, weight=1)
-        
-        # 1. Container da API Key
-        frame_api = ctk.CTkFrame(canvas_config, corner_radius=8)
-        # CORREÇÃO: Removido o fill="x" do grid. O sticky="ew" cuida de esticar horizontalmente.
-        frame_api.grid(row=0, column=0, padx=15, pady=10, sticky="ew")
-        
-        lbl_api = ctk.CTkLabel(frame_api, text="Chave de API do Gemini (Google AI Studio):", font=ctk.CTkFont(weight="bold"))
-        lbl_api.pack(anchor="w", padx=15, pady=(10, 2))
-        
-        self.txt_api_key = ctk.CTkEntry(frame_api, placeholder_text="Cole sua AI_KEY aqui...", width=600, show="*")
-        self.txt_api_key.pack(anchor="w", padx=15, pady=(0, 15))
-        self.txt_api_key.insert(0, config.API_KEY_GEMINI)
-        
-        # 2. Container das Palavras-Chave
-        frame_palavras = ctk.CTkFrame(canvas_config, corner_radius=8)
-        # CORREÇÃO: Removido o fill="x" do grid aqui também.
-        frame_palavras.grid(row=1, column=0, padx=15, pady=10, sticky="ew")
-        
-        lbl_palavras = ctk.CTkLabel(
-            frame_palavras, 
-            text="Termos de Busca / Palavras-Chave (Separe as palavras por VÍRGULA):", 
-            font=ctk.CTkFont(weight="bold")
-        )
-        lbl_palavras.pack(anchor="w", padx=15, pady=(10, 2))
-        
-        # Altura fixa definida para a caixa de texto para não quebrar o layout
-        self.txt_palavras = ctk.CTkTextbox(frame_palavras, font=("Arial", 12), height=150)
-        self.txt_palavras.pack(fill="x", padx=15, pady=(0, 15)) # Aqui o pack aceita o fill normalmente!
-        
-        texto_inicial_palavras = ", ".join(config.PALAVRAS_CHAVE)
-        self.txt_palavras.insert("1.0", texto_inicial_palavras)
-        
-        # 3. Botão de Ação de Gravação
-        self.btn_salvar_config = ctk.CTkButton(
-            canvas_config,
-            text="💾 Salvar Configurações",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color="#1f6aa5",
-            hover_color="#144d78",
-            height=40,
-            command=self.acao_salvar_configuracoes
-        )
-        self.btn_salvar_config.grid(row=2, column=0, pady=20)
+        def selecionar_data_calendario(btn_alvo, tipo):
+            top_cal = ctk.CTkToplevel(popup)
+            top_cal.title("Calendario")
+            top_cal.geometry("280x280")
+            top_cal.resizable(False, False)
+            top_cal.transient(popup)
+            top_cal.grab_set()
 
+            cal = Calendar(top_cal, selectmode='day', locale='pt_BR', date_pattern='dd/mm/yyyy')
+            cal.pack(pady=10, fill="both", expand=True)
 
-    def acao_salvar_configuracoes(self):
-        """Captura os valores da tela, atualiza a memória ativa do config e grava no JSON."""
-        nova_key = self.txt_api_key.get().strip()
-        texto_palavras = self.txt_palavras.get("1.0", "end").strip()
+            def confirmar_data():
+                data_sel = cal.get_date()
+                btn_alvo.configure(text=data_sel)
+                if tipo == "min": self.filtro_data_min = data_sel
+                else: self.filtro_data_max = data_sel
+                top_cal.destroy()
+
+            btn_conf = ctk.CTkButton(top_cal, text="CONFIRMAR", corner_radius=0, font=ctk.CTkFont(family="Arial", size=11, weight="bold"), command=confirmar_data)
+            btn_conf.pack(pady=5)
+
+        txt_d_min = self.filtro_data_min if self.filtro_data_min else "DATA INICIAL"
+        btn_min = ctk.CTkButton(frame_inputs_d, text=txt_d_min, width=170, corner_radius=0, fg_color="#2c3e50", command=lambda: selecionar_data_calendario(btn_min, "min"))
+        btn_min.pack(side="left", padx=(0, 5))
         
-        # Quebra o texto da caixa pelas vírgulas para remontar a lista limpa
-        novas_palavras = [p.strip() for p in texto_palavras.split(",") if p.strip()]
+        lbl_ate = ctk.CTkLabel(frame_inputs_d, text="ate", font=ctk.CTkFont(family="Arial", size=11))
+        lbl_ate.pack(side="left", padx=5)
         
-        if not nova_key:
-            messagebox.showwarning("Aviso", "A chave de API do Gemini não pode ficar em branco!")
-            return
+        txt_d_max = self.filtro_data_max if self.filtro_data_max else "DATA FINAL"
+        btn_max = ctk.CTkButton(frame_inputs_d, text=txt_d_max, width=170, corner_radius=0, fg_color="#2c3e50", command=lambda: selecionar_data_calendario(btn_max, "max"))
+        btn_max.pack(side="right", padx=(5, 0))
+        
+        # 3. Matriz Estilo Power BI com Alinhamento Retilíneo
+        frame_matriz = ctk.CTkFrame(popup, corner_radius=0, border_width=1, border_color="#3a3d42")
+        frame_matriz.pack(fill="both", expand=True, padx=20, pady=8)
+        
+        frame_header = ctk.CTkFrame(frame_matriz, height=32, corner_radius=0, fg_color="#1f6aa5")
+        frame_header.pack(fill="x", side="top")
+        
+        lbl_h1 = ctk.CTkLabel(frame_header, text="SELECIONAR", font=ctk.CTkFont(family="Arial", size=11, weight="bold"), text_color="white")
+        lbl_h1.pack(side="left", padx=15, pady=5)
+        
+        lbl_h2 = ctk.CTkLabel(frame_header, text="MODULO DO PORTAL DE ORIGEM", font=ctk.CTkFont(family="Arial", size=11, weight="bold"), text_color="white")
+        lbl_h2.pack(side="left", padx=30, pady=5)
+        
+        if getattr(sys, 'frozen', False): diretoria = os.path.join(sys._MEIPASS, "portais")
+        else: diretoria = os.path.join(os.path.dirname(os.path.abspath(__file__)), "portais")
+        
+        arquivos_portais = ["cnpq", "finep", "fundep"]
+        if os.path.exists(diretoria):
+            arquivos_portais = [f[:-3] for f in os.listdir(diretoria) if f.endswith(".py") and f != "__init__.py"]
+        
+        dic_vars_locais = {}
+        for idx, portal_nome in enumerate(arquivos_portais):
+            bg_linha = "#2a2d32" if idx % 2 == 0 else "#212325"
+            frame_linha = ctk.CTkFrame(frame_matriz, height=38, corner_radius=0, fg_color=bg_linha)
+            frame_linha.pack(fill="x", side="top")
             
-        if not novas_palavras:
-            messagebox.showwarning("Aviso", "Você precisa digitar ao menos uma palavra-chave para a varredura!")
-            return
+            estado_atual = config.PORTAIS_ATIVOS.get(portal_nome, True)
+            v_loc = ctk.BooleanVar(value=estado_atual)
+            dic_vars_locais['pname'] = v_loc
             
-        # Executa a gravação física no config.py
-        sucesso = config.salvar_configuracoes_usuario(nova_key, novas_palavras)
-        
-        if sucesso:
-            messagebox.showinfo("Sucesso", "Configurações gravadas com sucesso! Elas serão aplicadas na próxima sincronização.")
-        else:
-            messagebox.showerror("Erro I/O", "O Windows impediu a gravação do arquivo de configurações.")
+            # Checkbox com cantos retos (corner_radius=0)
+            chk = ctk.CTkCheckBox(frame_linha, text="", variable=v_loc, width=20, corner_radius=0)
+            chk.pack(side="left", padx=25, pady=8)
+            
+            lbl_pname = ctk.CTkLabel(frame_linha, text=portal_nome.upper(), font=ctk.CTkFont(family="Arial", size=11, weight="bold"), text_color="#e0e0e0")
+            lbl_pname.pack(side="left", padx=35, pady=8)
+        def aplicar_filtros_acao():
+            texto_p = txt_pop_palavras.get().strip()
+            novas_palavras = [p.strip() for p in texto_p.split(",") if p.strip()]
+            if not novas_palavras:
+                messagebox.showwarning("Aviso", "Defina ao menos uma palavra-chave para continuar.", parent=popup)
+                return
+
+            config.PORTAIS_ATIVOS = {k: v.get() for k, v in dic_vars_locais.items()}
+            config.salvar_configuracoes_usuario(config.API_KEY_GEMINI, novas_palavras, config.PORTAIS_ATIVOS)
+            
+            self.filtro_portais = config.PORTAIS_ATIVOS
+            ativos = ["Filtros em execucao:"]
+            if self.filtro_data_min or self.filtro_data_max: ativos.append("Intervalo Cronologico")
+            if [k for k, v in self.filtro_portais.items() if not v]: ativos.append("Motores Omitidos")
+            
+            self.lbl_filtros_ativos.configure(
+                text=f"{' | '.join(ativos)}" if len(ativos) > 1 else "Filtros: Operando sob configuracao customizada.",
+                text_color="#27ae60" if len(ativos) == 1 else "#e74c3c"
+            )
+            self.atualizar_tabela_local()
+            popup.destroy()
+            
+        def limpar_filtros_acao():
+            self.filtro_data_min = ""
+            self.filtro_data_max = ""
+            self.filtro_portais = {}
+            btn_min.configure(text="DATA INICIAL")
+            btn_max.configure(text="DATA FINAL")
+            self.lbl_filtros_ativos.configure(text="Filtros: Parametros padrao ativos.", text_color="#95a5a6")
+            self.atualizar_tabela_local()
+            popup.destroy()
+
+        btn_limpar = ctk.CTkButton(popup, text="LIMPAR FILTROS", corner_radius=0, fg_color="#c0392b", hover_color="#962d22", command=limpar_filtros_acao)
+        btn_limpar.pack(side="left", padx=25, pady=15)
+        btn_aplicar = ctk.CTkButton(popup, text="GRAVAR E APLICAR", corner_radius=0, fg_color="#27ae60", hover_color="#219653", command=aplicar_filtros_acao)
+        btn_aplicar.pack(side="right", padx=25, pady=15)
+
+    def atualizar_tabela_local(self):
+        for item in self.tabela.get_children(): self.tabela.delete(item)
+        try:
+            resposta = config.supabase.table("editais").select("*").execute()
+            editais = resposta.data
+            editais_ordenados = sorted(editais, key=lambda x: x.get("prazo_ISO", "9999-12-31 23:59"))
+            hoje = datetime.now().date()
+
+            dt_corte_min = datetime.strptime(self.filtro_data_min, "%d/%m/%Y").date() if self.filtro_data_min else None
+            dt_corte_max = datetime.strptime(self.filtro_data_max, "%d/%m/%Y").date() if self.filtro_data_max else None
+
+            for edital in editais_ordenados:
+                if edital.get("status_ia") == "descartado_vencido": continue
+
+                portal_bruto = edital.get("portal", "N/A")
+                modulo_chave = portal_bruto.split(" ")[0].strip().lower() if " " in portal_bruto else portal_bruto.strip().lower()
+                
+                if self.filtro_portais and not self.filtro_portais.get(modulo_chave, True): continue
+                
+                prazo_texto = edital.get("datas", "")
+                match_datas = re.findall(r"\d{2}/\d{2}/\d{2,4}", prazo_texto)
+                
+                dt_item = None
+                if match_datas:
+                    try:
+                        data_alvo_str = match_datas[-1].strip()
+                        dt_item = datetime.strptime(data_alvo_str, "%d/%m/%y").date() if len(data_alvo_str.split("/")[-1]) == 2 else datetime.strptime(data_alvo_str, "%d/%m/%Y").date()
+                    except: pass
+
+                if dt_item and dt_item < hoje: continue
+                if dt_item:
+                    if dt_corte_min and dt_item < dt_corte_min: continue
+                    if dt_corte_max and dt_item > dt_corte_max: continue
+
+                termo = edital.get("palavra_chave", "Nativa")
+                self.tabela.insert("", "end", values=(portal_bruto, prazo_texto, termo), tags=(edital.get("url", ""), json.dumps(edital)))
+        except Exception as e: print(f"Erro tabela nuvem: {e}")
+
+    def ativar_atualizador_ciclico_1min(self):
+        if not self.bloqueio_diario_ativo:
+            threading.Thread(target=self.disparar_esteira_ia_segura, name="esteira_ia_automatica", daemon=True).start()
+        self.after(60000, self.ativar_atualizador_ciclico_1min)
+
+    def disparar_esteira_ia_segura(self):
+        if self.bloqueio_diario_ativo: return
+        def logger_provisorio(msg): self.logs_callback(f"[Fila Automatica] {msg}")
+        status = processador.consumir_fila_pendente_ia(logger_provisorio, self.forcar_atualizacao_tabela_ui)
+        if status == "bloqueio_diario":
+            self.bloqueio_diario_ativo = True
+            self.lbl_status.configure(text="Status: Fila em background suspensa - Limite de cota atingido.")
 
     def configurar_tabela_resultados(self):
-        """Monta o Treeview para exibição simplificada dos editais."""
-        # Definimos apenas as 3 colunas essenciais
         colunas = ("portal", "datas", "palavra_chave")
-        
-        estilo = ttk.Style()
-        estilo.theme_use("clam")
-        estilo.configure("Treeview", background="#2a2d32", fieldbackground="#2a2d32", foreground="white", rowheight=25)
-        estilo.map("Treeview", background=[("selected", "#1f538d")])
-        estilo.configure("Treeview.Heading", background="#1f6aa5", foreground="white", font=('Arial', 10, 'bold'))
-
         self.tabela = ttk.Treeview(self.tab_resultados, columns=colunas, show="headings", style="Treeview")
-        
-        # Cabeçalhos simplificados
-        self.tabela.heading("portal", text="Portal")
-        self.tabela.heading("datas", text="Prazo / Submissão")
-        self.tabela.heading("palavra_chave", text="Palavra-Chave Gatilho")
-
-        # Ajuste de larguras para preencher bem o espaço horizontal
+        self.tabela.heading("portal", text="Portal de Origem")
+        self.tabela.heading("datas", text="Prazo / Submissao")
+        self.tabela.heading("palavra_chave", text="Termo Ativado")
         self.tabela.column("portal", width=250, anchor="w")
         self.tabela.column("datas", width=200, anchor="center")
         self.tabela.column("palavra_chave", width=350, anchor="w")
 
         scroll_y = ttk.Scrollbar(self.tab_resultados, orient="vertical", command=self.tabela.yview)
         self.tabela.configure(yscrollcommand=scroll_y.set)
-        
-        self.tabela.grid(row=0, column=0, sticky="nsew")
-        scroll_y.grid(row=0, column=1, sticky="ns")
-        
-        # Eventos vinculados
+        self.tabela.grid(row=1, column=0, sticky="nsew")
+        scroll_y.grid(row=1, column=1, sticky="ns")
         self.tabela.bind("<<TreeviewSelect>>", self.evento_linha_selecionada)
         self.tabela.bind("<Double-1>", self.abrir_link_edital)
 
-    def evento_linha_selecionada(self, event):
-        """Gatilho acionado ao selecionar uma linha. Lê os metadados ocultos da tag."""
-        item_selecionado = self.tabela.selection()
-        if not item_selecionado:
-            return
-
-        # Recupera as tags guardadas na linha clicada
-        tags = self.tabela.item(item_selecionado, "tags")
-        if len(tags) >= 2:
-            try:
-                # Reconverte a string oculta de volta para um dicionário Python
-                edital = json.loads(tags[1])
-                
-                portal = edital.get("portal", edital.get("Portal", "N/A"))
-                prazo = edital.get("datas", edital.get("Prazo / Submissão", "Não encontrada"))
-                linha_pesquisa = edital.get("pesquisa", edital.get("Linha de Pesquisa", "Não encontrada"))
-                subvencao = edital.get("subvencao", edital.get("Orçamento / Subvenção", "Não encontrada"))
-                resumo_completo = edital.get("escopo", edital.get("Resumo do Escopo Técnico", edital.get("Resumo do Escopo", "Não encontrado")))
-                
-                # Monta a ficha de leitura rica e organizada na área de texto inferior
-                texto_formatado = (
-                    f"🏛️ PORTAL DE ORIGEM: {portal}\n"
-                    f"📅 PRAZO DE SUBMISSÃO: {prazo}\n"
-                    f"🧬 LINHA DE PESQUISA: {linha_pesquisa}\n"
-                    f"💰 ORÇAMENTO / SUBVENÇÃO: {subvencao}\n"
-                    f"-------------------------------------------------------------------------------------------------------\n\n"
-                    f"📝 RESUMO DO ESCOPO TÉCNICO COMPLETO:\n{resumo_completo}"
-                )
-                
-                self.txt_detalhes_escopo.configure(state="normal")
-                self.txt_detalhes_escopo.delete("1.0", "end")
-                self.txt_detalhes_escopo.insert("1.0", texto_formatado)
-                self.txt_detalhes_escopo.configure(state="disabled")
-                
-            except Exception as err:
-                print(f"Erro ao decodificar dados do painel: {err}")
-
+    def forcar_atualizacao_tabela_ui(self): self.after(0, self.atualizar_tabela_local)
 
     def logs_callback(self, mensagem):
-        """Injeta mensagens vindas do backend em tempo real no console visual."""
         self.txt_logs.configure(state="normal")
         self.txt_logs.insert("end", f"{mensagem}\n")
         self.txt_logs.see("end")
         self.txt_logs.configure(state="disabled")
 
+    def evento_linha_selecionada(self, event):
+        item_selecionado = self.tabela.selection()
+        if not item_selecionado: return
+        tags = self.tabela.item(item_selecionado, "tags")
+        if len(tags) >= 2:
+            try:
+                edital = json.loads(tags)
+                texto_formatado = (
+                    f"PORTAL DE ORIGEM: {edital.get('portal', 'N/A')}\n"
+                    f"PRAZO DE SUBMISSAO: {edital.get('datas', 'Nao encontrada')}\n"
+                    f"LINHA DE PESQUISA: {edital.get('pesquisa', 'Nao encontrada')}\n"
+                    f"ORCAMENTO / SUBVENCAO: {edital.get('subvencao', 'Nao encontrada')}\n"
+                    f"--------------------------------------------------------------------------------\n\n"
+                    f"RESUMO DO ESCOPO TECNICO COMPLETO:\n{edital.get('escopo', 'Nao encontrado')}"
+                )
+                self.txt_detalhes_escopo.configure(state="normal")
+                self.txt_detalhes_escopo.delete("1.0", "end")
+                self.txt_detalhes_escopo.insert("1.0", texto_formatado)
+                self.txt_detalhes_escopo.configure(state="disabled")
+            except Exception as err: print(f"Erro painel: {err}")
+
     def acao_sincronizar(self):
-        """Aciona os disparadores assíncronos protegendo a UI de travamentos."""
-        self.btn_sincronizar.configure(state="disabled", text="⏳ Buscando...")
-        self.lbl_status.configure(text="⏳ Buscando editais ativamente nos portais públicos...")
-        
-        self.abas.set("📋 Console de Varredura")
+        self.btn_sincronizar.configure(state="disabled", text="AGUARDE...")
+        self.lbl_status.configure(text="Status: Varrendo portais ativos no Supabase...")
+        self.abas.set("CONSOLE DE VARREDURA")
         self.txt_logs.configure(state="normal")
         self.txt_logs.delete("1.0", "end")
         self.txt_logs.configure(state="disabled")
-        
-        def exibir_log(msg):
-            print(msg)
-            self.logs_callback(msg)
-
+        def exibir_log(msg): self.logs_callback(msg)
         threading.Thread(
-            target=lambda: app_backend.rodar_automacao_unificada(self.finalizar_sincronizacao, exibir_log),
-            daemon=True
+            target=lambda: app_backend.rodar_automacao_unificada(
+                self.finalizar_sincronizacao, exibir_log, self.forcar_atualizacao_tabela_ui
+            ), name="varredura_manual_selenium", daemon=True
         ).start()
 
-    def finalizar_sincronizacao(self):
-        """Devolve a conclusão do fluxo para a thread principal da UI."""
-        self.after(0, self._concluir_ui)
+    def finalizar_sincronizacao(self): self.after(0, self._concluir_ui)
 
     def _concluir_ui(self):
-        self.btn_sincronizar.configure(state="normal", text="🔄 Iniciar Sincronização")
-        self.lbl_status.configure(text="✅ Sincronização finalizada e dados atualizados!")
+        self.btn_sincronizar.configure(state="normal", text="SINCRONIZAR PORTAIS")
+        self.lbl_status.configure(text="Status: Dados atualizados e integrados com sucesso na nuvem SQL!")
         self.atualizar_tabela_local()
-        self.abas.set("📊 Editais Encontrados")
-        messagebox.showinfo("Varredura Completa", "A busca terminou! Os novos editais compatíveis já foram processados.")
-
-    def atualizar_tabela_local(self):
-        """Lê o arquivo JSON unificado estruturado e renderiza na Grid simplificada."""
-        for item in self.tabela.get_children():
-            self.tabela.delete(item)
-
-        caminho_json = config.CAMINHO_JSON_HISTORICO
-        if not os.path.exists(caminho_json):
-            return
-
-        try:
-            with open(caminho_json, "r", encoding="utf-8") as f:
-                editais = json.load(f)
-                
-            editais_ordenados = sorted(editais, key=lambda x: x.get("prazo_ISO", "9999-12-31 23:59"))
-
-            for edital in editais_ordenados:
-                # Recupera o termo gatilho que salvamos no JSON provisório ou assume padrão
-                termo = edital.get("palavra_chave", "Nativa do Portal")
-                if "texto_extracao" in edital and not termo:
-                    termo = "Aguardando Varredura..."
-
-                # Insere apenas os 3 valores visíveis
-                self.tabela.insert("", "end", values=(
-                    edital.get("portal", edital.get("Portal", "N/A")),
-                    edital.get("datas", edital.get("Prazo / Submissão", "Não encontrada")),
-                    termo
-                ), tags=(edital.get("url", ""), json.dumps(edital))) # Guardamos o JSON completo stringificado na tag[1]
-                
-        except Exception as e:
-            self.logs_callback(f"[X] Erro ao carregar histórico na tabela visual: {e}")
+        self.abas.set("EDITAIS ENCONTRADOS")
+        messagebox.showinfo("Concluido", "Varredura finalizada.")
 
     def abrir_link_edital(self, event):
-        """Abre a URL pelo duplo clique."""
         item_selecionado = self.tabela.selection()
         if item_selecionado:
             tags = self.tabela.item(item_selecionado, "tags")
-            if tags:
-                import webbrowser
-                webbrowser.open(tags[0])
+            if tags: import webbrowser; webbrowser.open(tags)
 
     def abrir_link_botao(self):
-        """Captura la línea seleccionada y abre el link."""
         item_selecionado = self.tabela.selection()
         if item_selecionado:
             tags = self.tabela.item(item_selecionado, "tags")
-            if tags:
-                import webbrowser
-                webbrowser.open(tags[0])
-        else:
-            messagebox.showwarning("Aviso", "Por favor, clique em um edital na tabela primeiro para abrir o link!")
+            if tags: import webbrowser; webbrowser.open(tags)
+        else: messagebox.showwarning("Aviso", "Selecione um edital na tabela antes de prosseguir.")
 
 if __name__ == "__main__":
     app = AppSincronizador()
