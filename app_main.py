@@ -133,38 +133,29 @@ class AppSincronizador(ctk.CTk):
         self.txt_detalhes_escopo.configure(state="disabled")
 
     def abrir_popup_filtros(self):
-        """Painel de Filtros e Parametros com design estritamente geometrico e alinhamento limpo."""
+        """Painel de Filtros com layout lado a lado superior e palavras-chave na metade inferior."""
         popup = ctk.CTkToplevel(self)
         popup.title("Configuracoes de Varredura e Filtros")
-        popup.geometry("520x620")
+        popup.geometry("680x520")
         popup.resizable(False, False)
         popup.transient(self)
         popup.grab_set()
         
         lbl_pop_title = ctk.CTkLabel(popup, text="PARAMETROS DE FILTRO E VARREDURA", font=ctk.CTkFont(family="Arial", size=14, weight="bold"))
-        lbl_pop_title.pack(pady=15)
+        lbl_pop_title.pack(pady=(15, 10))
         
-        # 1. Container: Palavras-Chave
-        frame_keywords = ctk.CTkFrame(popup, corner_radius=0, border_width=1, border_color="#3a3d42")
-        frame_keywords.pack(fill="x", padx=20, pady=6)
+        # --- CONTAINER METADE SUPERIOR (DIVIDIDO EM 2 COLUNAS) ---
+        frame_superior = ctk.CTkFrame(popup, fg_color="transparent")
+        frame_superior.pack(fill="x", padx=20, pady=5)
         
-        lbl_kw = ctk.CTkLabel(frame_keywords, text="Termos de Busca (Separe as palavras por virgula):", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
-        lbl_kw.pack(anchor="w", padx=15, pady=(8, 2))
+        # 1. CANTO SUPERIOR ESQUERDO: Filtro de Datas
+        frame_datas = ctk.CTkFrame(frame_superior, corner_radius=0, border_width=1, border_color="#3a3d42", width=310, height=210)
+        frame_datas.pack(side="left", fill="both", expand=True, padx=(0, 5))
+        frame_datas.pack_propagate(False)
         
-        txt_pop_palavras = ctk.CTkEntry(frame_keywords, placeholder_text="Ex: veiculo, combustivel, mecanica...", width=440, corner_radius=0)
-        txt_pop_palavras.pack(anchor="w", padx=15, pady=(0, 12))
-        txt_pop_palavras.insert(0, ", ".join(config.PALAVRAS_CHAVE))
+        lbl_d = ctk.CTkLabel(frame_datas, text="Filtrar por intervalo de prazos:", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
+        lbl_d.pack(anchor="w", padx=15, pady=(15, 10))
         
-        # 2. Container: Intervalo de Prazos
-        frame_datas = ctk.CTkFrame(popup, corner_radius=0, border_width=1, border_color="#3a3d42")
-        frame_datas.pack(fill="x", padx=20, pady=6)
-        
-        lbl_d = ctk.CTkLabel(frame_datas, text="Filtrar exibicao por intervalo de prazos:", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
-        lbl_d.pack(anchor="w", padx=15, pady=(8, 4))
-        
-        frame_inputs_d = ctk.CTkFrame(frame_datas, fg_color="transparent")
-        frame_inputs_d.pack(fill="x", padx=15, pady=(0, 10))
-
         def selecionar_data_calendario(btn_alvo, tipo):
             top_cal = ctk.CTkToplevel(popup)
             top_cal.title("Calendario")
@@ -187,29 +178,32 @@ class AppSincronizador(ctk.CTk):
             btn_conf.pack(pady=5)
 
         txt_d_min = self.filtro_data_min if self.filtro_data_min else "DATA INICIAL"
-        btn_min = ctk.CTkButton(frame_inputs_d, text=txt_d_min, width=170, corner_radius=0, fg_color="#2c3e50", command=lambda: selecionar_data_calendario(btn_min, "min"))
-        btn_min.pack(side="left", padx=(0, 5))
+        btn_min = ctk.CTkButton(frame_datas, text=txt_d_min, corner_radius=0, fg_color="#2c3e50", command=lambda: selecionar_data_calendario(btn_min, "min"))
+        btn_min.pack(fill="x", padx=15, pady=5)
         
-        lbl_ate = ctk.CTkLabel(frame_inputs_d, text="ate", font=ctk.CTkFont(family="Arial", size=11))
-        lbl_ate.pack(side="left", padx=5)
+        lbl_ate = ctk.CTkLabel(frame_datas, text="ate", font=ctk.CTkFont(family="Arial", size=11))
+        lbl_ate.pack(pady=2)
         
         txt_d_max = self.filtro_data_max if self.filtro_data_max else "DATA FINAL"
-        btn_max = ctk.CTkButton(frame_inputs_d, text=txt_d_max, width=170, corner_radius=0, fg_color="#2c3e50", command=lambda: selecionar_data_calendario(btn_max, "max"))
-        btn_max.pack(side="right", padx=(5, 0))
+        btn_max = ctk.CTkButton(frame_datas, text=txt_d_max, corner_radius=0, fg_color="#2c3e50", command=lambda: selecionar_data_calendario(btn_max, "max"))
+        btn_max.pack(fill="x", padx=15, pady=5)
         
-        # 3. Matriz Estilo Power BI com Alinhamento Retilíneo
-        frame_matriz = ctk.CTkFrame(popup, corner_radius=0, border_width=1, border_color="#3a3d42")
-        frame_matriz.pack(fill="both", expand=True, padx=20, pady=8)
+        # 2. CANTO SUPERIOR DIREITO: Filtro de Sites (Portais) com Scrollbar
+        frame_matriz = ctk.CTkFrame(frame_superior, corner_radius=0, border_width=1, border_color="#3a3d42", width=320, height=210)
+        frame_matriz.pack(side="right", fill="both", expand=True, padx=(5, 0))
+        frame_matriz.pack_propagate(False)
         
-        frame_header = ctk.CTkFrame(frame_matriz, height=32, corner_radius=0, fg_color="#1f6aa5")
+        # Cabeçalho Fixo
+        frame_header = ctk.CTkFrame(frame_matriz, height=28, corner_radius=0, fg_color="#1f6aa5")
         frame_header.pack(fill="x", side="top")
         
-        lbl_h1 = ctk.CTkLabel(frame_header, text="SELECIONAR", font=ctk.CTkFont(family="Arial", size=11, weight="bold"), text_color="white")
-        lbl_h1.pack(side="left", padx=15, pady=5)
+        lbl_h2 = ctk.CTkLabel(frame_header, text="SELECIONAR PORTAIS DE ORIGEM", font=ctk.CTkFont(family="Arial", size=10, weight="bold"), text_color="white")
+        lbl_h2.pack(anchor="w", padx=10, pady=3)
         
-        lbl_h2 = ctk.CTkLabel(frame_header, text="MODULO DO PORTAL DE ORIGEM", font=ctk.CTkFont(family="Arial", size=11, weight="bold"), text_color="white")
-        lbl_h2.pack(side="left", padx=30, pady=5)
-        
+        # Container com Barra de Rolagem Automática (Scrollable)
+        scroll_portais = ctk.CTkScrollableFrame(frame_matriz, corner_radius=0, fg_color="transparent")
+        scroll_portais.pack(fill="both", expand=True, padx=2, pady=2)
+
         if getattr(sys, 'frozen', False): diretoria = os.path.join(sys._MEIPASS, "portais")
         else: diretoria = os.path.join(os.path.dirname(os.path.abspath(__file__)), "portais")
         
@@ -220,21 +214,33 @@ class AppSincronizador(ctk.CTk):
         dic_vars_locais = {}
         for idx, portal_nome in enumerate(arquivos_portais):
             bg_linha = "#2a2d32" if idx % 2 == 0 else "#212325"
-            frame_linha = ctk.CTkFrame(frame_matriz, height=38, corner_radius=0, fg_color=bg_linha)
-            frame_linha.pack(fill="x", side="top")
+            frame_linha = ctk.CTkFrame(scroll_portais, height=34, corner_radius=0, fg_color=bg_linha)
+            frame_linha.pack(fill="x", side="top", pady=1)
             
             estado_atual = config.PORTAIS_ATIVOS.get(portal_nome, True)
             v_loc = ctk.BooleanVar(value=estado_atual)
-            dic_vars_locais['pname'] = v_loc
+            dic_vars_locais[portal_nome] = v_loc
             
-            # Checkbox com cantos retos (corner_radius=0)
             chk = ctk.CTkCheckBox(frame_linha, text="", variable=v_loc, width=20, corner_radius=0)
-            chk.pack(side="left", padx=25, pady=8)
+            chk.pack(side="left", padx=15, pady=6)
             
             lbl_pname = ctk.CTkLabel(frame_linha, text=portal_nome.upper(), font=ctk.CTkFont(family="Arial", size=11, weight="bold"), text_color="#e0e0e0")
-            lbl_pname.pack(side="left", padx=35, pady=8)
+            lbl_pname.pack(side="left", padx=10, pady=6)
+
+        # --- METADE INFERIOR: Palavras-Chave ---
+        frame_keywords = ctk.CTkFrame(popup, corner_radius=0, border_width=1, border_color="#3a3d42")
+        frame_keywords.pack(fill="x", padx=20, pady=10)
+        
+        lbl_kw = ctk.CTkLabel(frame_keywords, text="Termos de Busca (Separe as palavras por virgula):", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
+        lbl_kw.pack(anchor="w", padx=15, pady=(10, 5))
+        
+        txt_pop_palavras = ctk.CTkTextbox(frame_keywords, height=80, corner_radius=0, font=("Arial", 11))
+        txt_pop_palavras.pack(fill="x", padx=15, pady=(0, 12))
+        txt_pop_palavras.insert("1.0", ", ".join(config.PALAVRAS_CHAVE))
+
+        # --- AÇÕES DO POPUP ---
         def aplicar_filtros_acao():
-            texto_p = txt_pop_palavras.get().strip()
+            texto_p = txt_pop_palavras.get("1.0", "end-1c").strip()
             novas_palavras = [p.strip() for p in texto_p.split(",") if p.strip()]
             if not novas_palavras:
                 messagebox.showwarning("Aviso", "Defina ao menos uma palavra-chave para continuar.", parent=popup)
@@ -265,10 +271,13 @@ class AppSincronizador(ctk.CTk):
             self.atualizar_tabela_local()
             popup.destroy()
 
-        btn_limpar = ctk.CTkButton(popup, text="LIMPAR FILTROS", corner_radius=0, fg_color="#c0392b", hover_color="#962d22", command=limpar_filtros_acao)
-        btn_limpar.pack(side="left", padx=25, pady=15)
-        btn_aplicar = ctk.CTkButton(popup, text="GRAVAR E APLICAR", corner_radius=0, fg_color="#27ae60", hover_color="#219653", command=aplicar_filtros_acao)
-        btn_aplicar.pack(side="right", padx=25, pady=15)
+        frame_botoes = ctk.CTkFrame(popup, fg_color="transparent")
+        frame_botoes.pack(fill="x", padx=20, pady=(5, 15))
+
+        btn_limpar = ctk.CTkButton(frame_botoes, text="LIMPAR FILTROS", corner_radius=0, fg_color="#c0392b", hover_color="#962d22", command=limpar_filtros_acao)
+        btn_limpar.pack(side="left")
+        btn_aplicar = ctk.CTkButton(frame_botoes, text="GRAVAR E APLICAR", corner_radius=0, fg_color="#27ae60", hover_color="#219653", command=aplicar_filtros_acao)
+        btn_aplicar.pack(side="right")
 
     def atualizar_tabela_local(self):
         for item in self.tabela.get_children(): self.tabela.delete(item)
