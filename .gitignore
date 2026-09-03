@@ -1,1 +1,21 @@
+# Ambiente Virtual
 .venv/
+
+# Binários pesados do Tesseract
+tesseract_bin/
+
+# Pastas de compilação (PyInstaller)
+build/
+dist/
+*.spec
+
+# PDFs baixados durante o uso da aplicação
+editais_baixados/
+
+# Arquivos de cache e temporários do Python
+__pycache__/
+*.py[cod]
+
+# Arquivos locais de configuração/histórico (caso existam)
+config_app.json
+resultados_editais.json

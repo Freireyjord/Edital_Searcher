@@ -1,0 +1,10 @@
+customtkinter
+requests
+beautifulsoup4
+selenium
+pypdf
+pdf2image
+pytesseract
+google-genai
+supabase
+tkcalendar
