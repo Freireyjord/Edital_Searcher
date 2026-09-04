@@ -1,0 +1,95 @@
+import re
+import io
+import requests
+from bs4 import BeautifulSoup
+from pdfminer.high_level import extract_text
+import config
+
+def limpar_texto_extraido(texto):
+    """Remove ruidos do HTML/PDF para otimizar o consumo de tokens na IA."""
+    if not texto: return ""
+    texto = re.sub(r'[ \t]+', ' ', texto)
+    texto = re.sub(r'[\r\n]+', '\n', texto)
+    linhas = [linha.strip() for linha in texto.split('\n') if linha.strip()]
+    return '\n'.join(linhas)
+
+def extrair_texto_pdf(url_pdf, log):
+    """Baixa o arquivo PDF em memoria e extrai seu conteudo textual."""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url_pdf, headers=headers, timeout=25)
+        if resp.status_code == 200:
+            with io.BytesIO(resp.content) as stream_pdf:
+                texto = extract_text(stream_pdf)
+                return texto if texto else ""
+    except Exception as e:
+        log(f"        [⚠️] Erro ao extrair PDF ({url_pdf}): {e}")
+    return ""
+
+def extrair_texto_html(url_html, log):
+    """Faz a raspagem do conteudo textual de paginas web padrao."""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url_html, headers=headers, timeout=20)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for s in soup(["script", "style", "nav", "footer", "header"]):
+                s.decompose()
+            return soup.get_text(separator=" ", strip=True)
+    except Exception as e:
+        log(f"        [⚠️] Erro ao extrair HTML ({url_html}): {e}")
+    return ""
+
+def processar_pagina_interna(url_edital, ignorar_links, nome_portal, log, palavra_chave, atualizar_tabela_func=None):
+    """Verifica duplicidade e cadastra o novo edital como PENDENTE enviando o texto completo."""
+    try:
+        if any(ign in url_edital.lower() for ign in ignorar_links): return False
+
+        # Verifica duplicidade no banco
+        res_banco = config.supabase.table("editais").select("url").eq("url", url_edital).execute()
+        if res_banco.data and len(res_banco.data) > 0:
+            return False
+
+        log(f"        [+] Novo edital localizado: {url_edital}")
+        
+        # Extração do Conteúdo bruto (PDF ou HTML)
+        if url_edital.lower().endswith(".pdf"):
+            texto_bruto = extrair_texto_pdf(url_edital, log)
+        else:
+            texto_bruto = extrair_texto_html(url_edital, log)
+
+        texto_limpo = limpar_texto_extraido(texto_bruto)
+
+        if not texto_limpo.strip() or len(texto_limpo.strip()) < 100:
+            log(f"        [⚠️] Texto extraído muito curto ou inválido. Ignorando link.")
+            return False
+
+        # --- LÓGICA DE CAPTURA DUPLA INTELIGENTE (CABEÇA + CAUDA) ---
+        if len(texto_limpo) > 25000:
+            inicio_texto = texto_limpo[:15000]
+            fim_texto = texto_limpo[-10000:]
+            texto_final = f"{inicio_texto}\n\n[... TEXTO SUCINTADO PARA OTIMIZAÇÃO DE TOKEN ...]\n\n{fim_texto}"
+        else:
+            texto_final = texto_limpo
+
+        # Inserção no Supabase mapeando o schema correto do banco
+        dados_edital = {
+            "url": url_edital,
+            "portal": nome_portal,
+            "palavra_chave": "Busca Ampla", 
+            "status_ia": "PENDENTE",        
+            "datas": "Processando...",
+            "pesquisa": "Processando...",
+            "escopo": texto_final, 
+            "subvencao": "Processando...",
+            "prazo_iso": None,
+            "tags_ia": "Processando..."     
+        }
+
+        config.supabase.table("editais").insert(dados_edital).execute()
+        log(f"        [✓] Edital registrado no Supabase com status PENDENTE.")
+        return True
+
+    except Exception as e:
+        log(f"        [X] Erro no processamento do edital ({url_edital}): {e}")
+        return False
