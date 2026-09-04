@@ -133,10 +133,11 @@ class AppSincronizador(ctk.CTk):
         self.txt_detalhes_escopo.configure(state="disabled")
 
     def abrir_popup_filtros(self):
-        """Painel de Filtros com layout lado a lado superior e sistema de Tags para palavras-chave."""
+        """Painel de Filtros com altura ajustada e sistema de tags com quebra de linha automatica."""
         popup = ctk.CTkToplevel(self)
         popup.title("Configuracoes de Varredura e Filtros")
-        popup.geometry("680x550")
+        # Aumentada a altura para 600px para garantir a exibição do rodapé
+        popup.geometry("680x600")
         popup.resizable(False, False)
         popup.transient(self)
         popup.grab_set()
@@ -188,7 +189,7 @@ class AppSincronizador(ctk.CTk):
         btn_max = ctk.CTkButton(frame_datas, text=txt_d_max, corner_radius=0, fg_color="#2c3e50", command=lambda: selecionar_data_calendario(btn_max, "max"))
         btn_max.pack(fill="x", padx=15, pady=5)
         
-        # 2. CANTO SUPERIOR DIREITO: Filtro de Sites (Portais) com Scrollbar
+        # 2. CANTO SUPERIOR DIREITO: Filtro de Sites (Portais)
         frame_matriz = ctk.CTkFrame(frame_superior, corner_radius=0, border_width=1, border_color="#3a3d42", width=320, height=200)
         frame_matriz.pack(side="right", fill="both", expand=True, padx=(5, 0))
         frame_matriz.pack_propagate(False)
@@ -225,7 +226,7 @@ class AppSincronizador(ctk.CTk):
             lbl_pname = ctk.CTkLabel(frame_linha, text=portal_nome.upper(), font=ctk.CTkFont(family="Arial", size=11, weight="bold"), text_color="#e0e0e0")
             lbl_pname.pack(side="left", padx=10, pady=6)
 
-        # --- METADE INFERIOR: SISTEMA DE TAGS PARA PALAVRAS-CHAVE ---
+        # --- METADE INFERIOR: SISTEMA DE TAGS COM QUEBRA DE LINHA DINÂMICA ---
         frame_keywords = ctk.CTkFrame(popup, corner_radius=0, border_width=1, border_color="#3a3d42")
         frame_keywords.pack(fill="x", padx=20, pady=10)
         
@@ -235,31 +236,38 @@ class AppSincronizador(ctk.CTk):
         entry_tag = ctk.CTkEntry(frame_keywords, placeholder_text="Digite aqui uma palavra-chave...", corner_radius=0, font=("Arial", 11))
         entry_tag.pack(fill="x", padx=15, pady=(0, 5))
 
-        # Container onde as Tags serão desenhadas
-        scroll_tags = ctk.CTkScrollableFrame(frame_keywords, height=90, corner_radius=0, fg_color="#1e1e1e")
+        scroll_tags = ctk.CTkScrollableFrame(frame_keywords, height=130, corner_radius=0, fg_color="#1e1e1e")
         scroll_tags.pack(fill="x", padx=15, pady=(0, 10))
 
-        # Lista local para gerenciar as palavras
         lista_tags = list(config.PALAVRAS_CHAVE)
 
         def renderizar_tags():
-            """Limpa e redesenha todas as tags dentro do container."""
+            """Limpa e desenha as tags criando uma nova linha dinâmica sempre que a largura limite (580px) é atingida."""
             for widget in scroll_tags.winfo_children():
                 widget.destroy()
 
-            # Container flexível simples com wrap manual
-            row_frame = ctk.CTkFrame(scroll_tags, fg_color="transparent")
-            row_frame.pack(anchor="w", fill="x")
+            LARGURA_MAXIMA_CONTAINER = 580
+            largura_acumulada = 0
+
+            linha_atual = ctk.CTkFrame(scroll_tags, fg_color="transparent")
+            linha_atual.pack(anchor="w", fill="x", pady=2)
 
             for tag_texto in lista_tags:
-                # Bloco/Chip da Tag
-                tag_box = ctk.CTkFrame(row_frame, fg_color="#1f6aa5", corner_radius=12)
-                tag_box.pack(side="left", padx=3, pady=3)
+                # Estimativa de largura do chip com base no número de caracteres da palavra
+                largura_estimada_tag = (len(tag_texto) * 8) + 42 
+
+                # Se estourar a largura da linha atual, cria uma nova linha abaixo
+                if largura_acumulada + largura_estimada_tag > LARGURA_MAXIMA_CONTAINER and largura_acumulada > 0:
+                    linha_atual = ctk.CTkFrame(scroll_tags, fg_color="transparent")
+                    linha_atual.pack(anchor="w", fill="x", pady=2)
+                    largura_acumulada = 0
+
+                tag_box = ctk.CTkFrame(linha_atual, fg_color="#1f6aa5", corner_radius=12)
+                tag_box.pack(side="left", padx=3, pady=2)
 
                 lbl_t = ctk.CTkLabel(tag_box, text=tag_texto, font=ctk.CTkFont(family="Arial", size=10, weight="bold"), text_color="white")
                 lbl_t.pack(side="left", padx=(8, 4), pady=2)
 
-                # Botão "X" para deletar a tag
                 def remover_tag(t=tag_texto):
                     if t in lista_tags:
                         lista_tags.remove(t)
@@ -268,6 +276,8 @@ class AppSincronizador(ctk.CTk):
                 btn_del = ctk.CTkButton(tag_box, text="✕", width=16, height=16, corner_radius=8, fg_color="transparent", hover_color="#c0392b", font=("Arial", 9, "bold"), command=remover_tag)
                 btn_del.pack(side="right", padx=(0, 4), pady=2)
 
+                largura_acumulada += largura_estimada_tag
+
         def adicionar_tag_evt(event=None):
             texto = entry_tag.get().strip().replace(",", "")
             if texto:
@@ -275,18 +285,15 @@ class AppSincronizador(ctk.CTk):
                     lista_tags.append(texto)
                     renderizar_tags()
                 entry_tag.delete(0, "end")
-            return "break" # Impede o bip sonoro do Enter
+            return "break"
 
-        # Bind para Enter e Vírgula
         entry_tag.bind("<Return>", adicionar_tag_evt)
         entry_tag.bind(",", adicionar_tag_evt)
 
-        # Renderização inicial das palavras já existentes
         renderizar_tags()
 
-        # --- AÇÕES DO POPUP ---
+        # --- AÇÕES DO POPUP (RODAPÉ FIXO VISÍVEL) ---
         def aplicar_filtros_acao():
-            # Adiciona o texto atual na Entry caso a pessoa não tenha apertado Enter
             adicionar_tag_evt()
 
             if not lista_tags:
@@ -294,7 +301,7 @@ class AppSincronizador(ctk.CTk):
                 return
 
             config.PORTAIS_ATIVOS = {k: v.get() for k, v in dic_vars_locais.items()}
-            config.salvar_configuracoes_usuario(config.API_KEY_GEMINI, lista_tags, config.PORTAIS_ATIVOS)
+            config.salvar_configuracoes_usuario(lista_tags, config.PORTAIS_ATIVOS)
             
             self.filtro_portais = config.PORTAIS_ATIVOS
             ativos = ["Filtros em execucao:"]
@@ -450,7 +457,10 @@ class AppSincronizador(ctk.CTk):
         item_selecionado = self.tabela.selection()
         if item_selecionado:
             tags = self.tabela.item(item_selecionado, "tags")
-            if tags: import webbrowser; webbrowser.open(tags)
+            if tags:
+                url = tags[0] if isinstance(tags, (tuple, list)) else tags
+                import webbrowser
+                webbrowser.open(url)
 
     def abrir_link_botao(self):
         item_selecionado = self.tabela.selection()
