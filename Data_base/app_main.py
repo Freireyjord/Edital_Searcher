@@ -258,10 +258,7 @@ class AppSincronizador(ctk.CTk):
 
         def aplicar_filtros_acao():
             adicionar_tag_evt()
-            if not lista_tags:
-                messagebox.showwarning("Aviso", "Defina ao menos uma palavra-chave para filtrar.", parent=popup)
-                return
-
+        
             config.PORTAIS_ATIVOS = {k: v.get() for k, v in dic_vars_locais.items()}
             config.salvar_configuracoes_usuario(lista_tags, config.PORTAIS_ATIVOS)
             
@@ -307,8 +304,12 @@ class AppSincronizador(ctk.CTk):
             termos_filtro_usuario = [t.lower().strip() for t in config.PALAVRAS_CHAVE if t.strip()]
 
             for edital in editais_ordenados:
-                # Ignora editais descartados ou vencidos
-                if edital.get("status_ia") == "descartado_vencido": 
+                # Captura o status convertendo para minúsculo e remove espaços extras
+                status_bruto = edital.get("status_ia") or ""
+                status_limpo = str(status_bruto).strip().lower()
+
+                # Ignora editais descartados, vencidos ou que ainda estão pendentes de processamento
+                if status_limpo in ["descartado_vencido", "pendente", ""]: 
                     continue
 
                 # Filtro por Portal de Origem ativo/inativo
@@ -318,37 +319,50 @@ class AppSincronizador(ctk.CTk):
                 if self.filtro_portais and not self.filtro_portais.get(modulo_chave, True): 
                     continue
                 
-                # --- TRATAMENTO E FORMATAÇÃO VISUAL COMPACTA DO PRAZO ---
+                # --- TRATAMENTO E FORMATAÇÃO VISUAL INTELIGENTE DO PRAZO (MÓDULO CORRIGIDO) ---
                 prazo_texto_bruto = edital.get("datas", "") or ""
-                match_datas = re.findall(r"\d{2}/\d{2}/\d{2,4}", prazo_texto_bruto)
+                prazo_iso_bruto = edital.get("prazo_iso", "") or ""
                 
                 texto_prazo_formatado = "A consultar"
                 dt_item = None
-                
-                if match_datas:
+
+                # 1. Tenta decodificar o prazo estruturado gerado pela IA (Formato ISO)
+                if prazo_iso_bruto and "9999" not in str(prazo_iso_bruto):
                     try:
-                        # Identifica a última data do texto (prazo final)
-                        data_alvo_str = match_datas[-1].strip()
-                        dt_item = datetime.strptime(data_alvo_str, "%d/%m/%y").date() if len(data_alvo_str.split("/")[-1]) == 2 else datetime.strptime(data_alvo_str, "%d/%m/%Y").date()
-                        
-                        # Se houver um intervalo de datas (De XX/XX/XXXX até YY/YY/YYYY)
-                        if len(match_datas) >= 2:
-                            data_inicio_str = match_datas[0].strip()
-                            texto_prazo_formatado = f"{data_inicio_str} - {dt_item.strftime('%d/%m/%Y')}"
-                        else:
-                            # Se houver apenas uma data isolada no texto
-                            texto_prazo_formatado = f"Até {dt_item.strftime('%d/%m/%Y')}"
-                    except:
-                        texto_prazo_formatado = prazo_texto_bruto[:30]
-                else:
-                    if "contínuo" in prazo_texto_bruto.lower() or "fluxo" in prazo_texto_bruto.lower():
+                        # Extrai apenas a data pura (caso venha com carimbo de hora junto)
+                        data_iso_limpa = str(prazo_iso_bruto).split(" ")[0].strip()
+                        dt_item = datetime.strptime(data_iso_limpa, "%Y-%m-%d").date()
+                        texto_prazo_formatado = f"Até {dt_item.strftime('%d/%m/%Y')}"
+                    except Exception as e_date:
+                        dt_item = None
+
+                # 2. Caso a IA não tenha gerado um ISO válido, recorre a termos textuais comuns
+                if not dt_item:
+                    texto_ba = prazo_texto_bruto.lower()
+                    if "contínuo" in texto_ba or "fluxo" in texto_ba:
                         texto_prazo_formatado = "Fluxo Contínuo"
                     else:
-                        texto_prazo_formatado = prazo_texto_bruto[:30]
+                        # Evita o corte cego [:30]. Limpa os prefixos e mantém o texto legível
+                        texto_limpo = prazo_texto_bruto.replace("Envio de propostas ", "")
+                        texto_limpo = texto_limpo.split(", às")[0].split(", as")[0].strip() # Oculta o horário
+                        texto_prazo_formatado = texto_limpo if texto_limpo else "A consultar"
 
-                # Filtros cronológicos baseados na data limite estruturada
-                if dt_item and dt_item < hoje: continue
+                # 3. Filtros cronológicos baseados no calendário da Interface
                 if dt_item:
+                    if dt_item < hoje: 
+                        continue
+                    if dt_corte_min and dt_item < dt_corte_min: 
+                        continue
+                    if dt_corte_max and dt_item > dt_corte_max: 
+                        continue
+ 
+                # Remove o excesso de texto caso o robô tenha trazido informações de horário muito longas
+                if len(texto_prazo_formatado) > 40 and "até" in texto_prazo_formatado.lower():
+                    texto_prazo_formatado = texto_prazo_formatado.split(",")[0] # Corta o "às 17:00" para caber na tabela
+
+                # Filtros cronológicos baseados na data limite estruturada (apenas se dt_item foi mapeado)
+                if dt_item:
+                    if dt_item < hoje: continue
                     if dt_corte_min and dt_item < dt_corte_min: continue
                     if dt_corte_max and dt_item > dt_corte_max: continue
 
@@ -366,7 +380,8 @@ class AppSincronizador(ctk.CTk):
                             if palavra_usuario not in tags_encontradas_no_filtro:
                                 tags_encontradas_no_filtro.append(palavra_usuario)
 
-                if termos_filtro_usuario and not tags_encontradas_no_filtro:
+                # Só descarta por falta de palavra-chave se o usuário REALMENTE digitou algum termo
+                if len(termos_filtro_usuario) > 0 and not tags_encontradas_no_filtro:
                     continue
 
                 texto_coluna_termos = ", ".join(tags_encontradas_no_filtro) if tags_encontradas_no_filtro else "Geral / Amplo"
