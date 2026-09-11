@@ -18,6 +18,7 @@ else:
 caminho_exe_tesseract = os.path.join(DIR_TESS, "tesseract.exe")
 pytesseract.pytesseract.tesseract_cmd = caminho_exe_tesseract
 os.environ["TESSDATA_PREFIX"] = os.path.join(DIR_TESS, "tessdata")
+
 def baixar_e_ler_pdf(url_pdf, nome_arquivo, termos_ignorados):
     if any(t in url_pdf.lower() for t in termos_ignorados): 
         return ""
@@ -43,14 +44,35 @@ def baixar_e_ler_pdf(url_pdf, nome_arquivo, termos_ignorados):
         except: 
             pass
     return texto
-def extrair_dados_com_ia(texto_analise, chave_api):
-    """Executa a chamada da API do Gemini usando o modelo homologado."""
+def extrair_dados_com_ia(texto_analise, chave_api, url_edital="N/A", nome_portal="Portal"):
+    """Executa a chamada da API do Gemini e salva o prompt enviado localmente para auditoria."""
     try:
         client = genai.Client(api_key=chave_api)
     except Exception as e:
         return {"erro": f"MALA_INICIALIZACAO: {e}"}
 
     prompt_completo = f"{config.PROMPT_BASE_IA}\n\nTexto do Edital para Análise:\n{texto_analise}"
+    
+    # ----------------------------------------------------------------------
+    # [AUDITORIA] SALVA O PROMPT EXATAMENTE COMO FOI ENVIADO PARA O GEMINI
+    # ----------------------------------------------------------------------
+    try:
+        pasta_auditoria = os.path.join(config.DIRETORIO_PAI, "logs_auditoria")
+        os.makedirs(pasta_auditoria, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nome_portal_limpo = "".join(c for c in nome_portal if c.isalnum() or c in (' ', '_', '-')).strip().replace(" ", "_")
+        nome_arquivo_prompt = f"{nome_portal_limpo}_ia_prompt_{timestamp}.txt"
+        caminho_prompt = os.path.join(pasta_auditoria, nome_arquivo_prompt)
+        
+        with open(caminho_prompt, "w", encoding="utf-8") as f_prompt:
+            f_prompt.write(f"URL ALVO: {url_edital}\n")
+            f_prompt.write(f"DATA DA REQUISIÇÃO IA: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n")
+            f_prompt.write("="*80 + "\n\n")
+            f_prompt.write(prompt_completo)
+    except Exception as e_prmt:
+        print(f"[⚠️ Auditoria] Falha ao salvar txt do prompt da IA: {e_prmt}")
+    # ----------------------------------------------------------------------
     
     try:
         resposta = client.models.generate_content(
@@ -63,6 +85,7 @@ def extrair_dados_com_ia(texto_analise, chave_api):
         return {"erro": f"API_ERRO_{e.code}: {e.message}"}
     except Exception as e:
         return {"erro": f"ERRO_INESPERADO: {e}"}
+
 def consumir_fila_pendente_ia(log_func, atualizar_tabela_func=None):
     try:
         hoje_str = datetime.now().date().isoformat()
@@ -96,7 +119,6 @@ def consumir_fila_pendente_ia(log_func, atualizar_tabela_func=None):
         return "bloqueio_diario"
 
     try:
-        # Busca editais que aguardam análise da IA
         resposta = config.supabase.table("editais").select("*").eq("status_ia", "PENDENTE").execute()
         itens_pendentes = resposta.data
     except Exception as e:
@@ -126,9 +148,8 @@ def consumir_fila_pendente_ia(log_func, atualizar_tabela_func=None):
             chave_obj = lista_chaves_banco[indice_chave_atual]
             token_google = chave_obj["chave"]
             
-            # Tenta executar a chamada à IA com suporte a retentativas em caso de instabilidade (Erro 503)
             for tentativa in range(1, 4):
-                resultado_ia = extrair_dados_com_ia(texto_para_ia, token_google)
+                resultado_ia = extrair_dados_com_ia(texto_para_ia, token_google, edital['url'], edital['portal'])
                 if "erro" not in resultado_ia:
                     edital_processado_com_sucesso = True
                     break
@@ -138,7 +159,7 @@ def consumir_fila_pendente_ia(log_func, atualizar_tabela_func=None):
                     log_func(f"        [⚠️ Instabilidade] Gemini instável (Tentativa {tentativa}/3). Aguardando 20s...")
                     time.sleep(20)
                 else:
-                    break # Se for outro tipo de erro (ex: cota esgotada), quebra e roda a rotatividade de chaves
+                    break
             
             if edital_processado_com_sucesso:
                 break
@@ -154,41 +175,46 @@ def consumir_fila_pendente_ia(log_func, atualizar_tabela_func=None):
                 indice_chave_atual += 1
                 continue
 
-
         if not edital_processado_com_sucesso:
             log_func("        [🛑 INTERRUPÇÃO] Infraestrutura de chaves de API esgotada.")
             return "bloqueio_diario"
 
-        # Tratamento de datas e prazos de validade do edital
         prazo_texto = resultado_ia.get("datas") or "A consultar no edital"
         prazo_iso = resultado_ia.get("prazo_iso") or ""
+        fim_projeto_iso = resultado_ia.get("fim_projeto_iso") or ""
+        
         edital_vencido = False
         hoje = datetime.now().date()
 
-        if prazo_iso and "9999" not in prazo_iso:
+        # Define a data limite real: prioriza prazo de submissão, senão usa o fim do projeto
+        data_corte_iso = prazo_iso if (prazo_iso and "não" not in str(prazo_iso).lower()) else fim_projeto_iso
+
+        if data_corte_iso and "9999" not in data_corte_iso:
             try:
-                dt_limite = datetime.strptime(prazo_iso.split(" ")[0].strip(), "%Y-%m-%d").date()
-                if dt_limite < hoje: edital_vencido = True
-            except: pass
+                dt_limite = datetime.strptime(data_corte_iso.strip(), "%Y-%m-%d").date()
+                if dt_limite < hoje: 
+                    edital_vencido = True
+            except: 
+                pass
 
         if edital_vencido:
-            log_func(f"        [⏩ DESCARTE] Edital descartado por prazo vencido.")
+            log_func(f"        [⏩ DESCARTE] Edital descartado por prazo/vigência vencida ({data_corte_iso}).")
             config.supabase.table("editais").update({
-                "datas": "Expirado / Descartado", "status_ia": "descartado_vencido"
+                "datas": "Expirado / Descartado", 
+                "status_ia": "descartado_vencido"
             }).eq("url", edital["url"]).execute()
             continue
 
-        # Inserção atualizada enviando os resultados para as colunas estruturadas do banco
+        # Monta os dados para salvar no banco
         dados_atualizados = {
             "datas": prazo_texto,
             "pesquisa": resultado_ia.get("pesquisa") or "Não encontrada",
             "subvencao": resultado_ia.get("subvencao") or "Não encontrada",
             "escopo": resultado_ia.get("escopo") or "Não encontrado",
-            "prazo_iso": prazo_iso if (prazo_iso and "não" not in str(prazo_iso).lower()) else "9999-12-31 23:59",
-            
-            # GRAVAÇÃO OFICIAL DAS TAGS GERADAS PELA IA NA NOVA COLUNA DO SUPABASE
+            # Fallback seguro para o banco caso nenhuma data seja achada
+            "prazo_iso": prazo_iso if (prazo_iso and "não" not in str(prazo_iso).lower()) else (fim_projeto_iso if fim_projeto_iso else "9999-12-31 23:59"),
+            "vigencia_projeto": resultado_ia.get("vigencia_projeto") or "Não encontrada",
             "tags_ia": resultado_ia.get("tags_ia") or "Geral",
-            
             "status_ia": "CONCLUIDO"
         }
         
@@ -198,17 +224,11 @@ def consumir_fila_pendente_ia(log_func, atualizar_tabela_func=None):
         
     return "sucesso"
 
-
 def limpar_editais_expirados_no_banco(log_func):
-    """
-    Identifica editais vencidos na base de dados, limpa os textos pesados 
-    para economizar espaço e atualiza o status para 'expirado'.
-    """
     try:
         hoje_str = datetime.now().date().isoformat()
         log_func("    [🧹 Faxina Base] Verificando se existem editais vencidos para expurgar...")
         
-        # Busca editais concluídos que possuem data limite válida menor que hoje e que ainda não foram limpos
         resposta = config.supabase.table("editais")\
             .select("url, prazo_iso")\
             .not_.eq("status_ia", "expirado")\
@@ -222,9 +242,8 @@ def limpar_editais_expirados_no_banco(log_func):
             log_func("    [🧹 Faxina Base] Nenhum edital ativo está vencido. Base saudável!")
             return
             
-        log_func(f"    [🧹 Faxina Base] Encontrados {len(editais_vencidos)} editais vencidos. Iniciando expurgo de textos...")
+        log_func(f"    [🧹 Faxina Base] Encontrados {len(editais_vencidos)} editais vencidos. Iniciando expurgo...")
         
-        # Payload de anulação de dados conforme o seu requisito (mantém apenas a URL e muda o status)
         dados_expurgados = {
             "datas": "Expirado",
             "pesquisa": None,

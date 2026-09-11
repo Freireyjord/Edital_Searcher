@@ -13,6 +13,7 @@ DIRETORIO_PDFS = os.path.join(DIRETORIO_PAI, "editais_baixados")
 os.makedirs(DIRETORIO_PDFS, exist_ok=True)
 
 # --- PROMPT ATUALIZADO: RESTRITIVO CONTRA TAGS GENÉRICAS E NOMES DE PORTAIS ---
+
 PROMPT_BASE_IA = """
 Você é especialista em análise de editais públicos de inovação, tecnologia e pesquisa.
 Extraia somente informações explicitamente existentes no texto fornecido. Nunca invente valores.
@@ -21,7 +22,7 @@ Caso não encontre uma informação de jeito nenhum, retorne o campo corresponde
 Responda ESTRITAMENTE com um JSON válido (sem markdown, sem blocos extras).
 
 DIRETRIZES DE CRIAÇÃO DAS TAGS:
-Identifique de 3 a 5 palavras-chave ou termos técnicos específicos e profundos que definem o CONTEÚDO TÉCNICO E ESCOPO DO PROJETO deste edital (ex: inteligência artificial, biocombustíveis, previdência complementar, smart cities, telecomunicações). 
+Identifique de 3 a 10 palavras-chave ou termos técnicos específicos e profundos que definem o CONTEÚDO TÉCNICO E ESCOPO DO PROJETO deste edital (ex: inteligência artificial, biocombustíveis, previdência complementar, smart cities, telecomunicações). 
 
 Proibições Absolutas:
 - NUNCA inclua o nome do portal de origem (como Finep, CNPq, Fundep, Governo Federal).
@@ -32,18 +33,21 @@ Insira esses termos técnicos no campo "tags_ia" obrigatoriamente separados por 
 
 Siga estritamente esta estrutura para o JSON:
 {
-  "datas": "Texto resumido com o prazo limite de submissão do edital",
+  "datas": "Texto resumido com o prazo limite de submissão do edital no formato 'DD-MM-YY - DD-MM-YY' ou caso ache so a data de abertura 'Iniciado em DD-MM-YY' ou caso so a data de encerramento 'Até DD-MM-YY",
+  "prazo_iso": "Data limite de submissão formatada em YYYY-MM-DD (se encontrada)",
+  "vigencia_projeto": "Texto resumido com o período/vigência do projeto (ex: Data de início, término ou prorrogações encontradas)",
+  "fim_projeto_iso": "Data de término ou prorrogação final do projeto formatada em YYYY-MM-DD (se encontrada)",
   "pesquisa": "Descrição sucinta das linhas de pesquisa aceitas",
   "escopo": "Resumo detalhado do objetivo e escopo do edital",
   "subvencao": "Informações sobre recursos financeiros, subvenção econômica ou financiamento",
-  "prazo_iso": "Data limite formatada em YYYY-MM-DD (se encontrada)",
-  "tags_ia": "termo1, termo2, termo3"
+  "tags_ia": "termo1, termo2, termo3, ..."
 }
 """
 
+
 # Configurações padrão utilizadas pelos robôs de varredura ampla
 PALAVRAS_CHAVE = [""]
-PORTAIS_ATIVOS = {"cnpq": True, "finep": True, "fundep": True}
+PORTAIS_ATIVOS = {"cnpq": False, "finep": False, "fundep": True}
 
 # --- CONEXÃO BANCO DE DADOS NUVEM (SUPABASE) ---
 SUPABASE_URL = "https://sjozzxjyqkcofjmyljlv.supabase.co"
