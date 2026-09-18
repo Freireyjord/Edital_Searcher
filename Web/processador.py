@@ -207,16 +207,17 @@ def consumir_fila_pendente_ia(log_func, atualizar_tabela_func=None):
 
         # Monta os dados para salvar no banco
         dados_atualizados = {
+            "titulo": resultado_ia.get("titulo") or "Edital sem título definido",
             "datas": prazo_texto,
             "pesquisa": resultado_ia.get("pesquisa") or "Não encontrada",
             "subvencao": resultado_ia.get("subvencao") or "Não encontrada",
             "escopo": resultado_ia.get("escopo") or "Não encontrado",
-            # Fallback seguro para o banco caso nenhuma data seja achada
             "prazo_iso": prazo_iso if (prazo_iso and "não" not in str(prazo_iso).lower()) else (fim_projeto_iso if fim_projeto_iso else "9999-12-31 23:59"),
             "vigencia_projeto": resultado_ia.get("vigencia_projeto") or "Não encontrada",
             "tags_ia": resultado_ia.get("tags_ia") or "Geral",
             "status_ia": "CONCLUIDO"
         }
+
         
         config.supabase.table("editais").update(dados_atualizados).eq("url", edital["url"]).execute()
         log_func(f"        [✓] Analise integrada com sucesso ao Supabase!")

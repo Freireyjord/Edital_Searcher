@@ -1,8 +1,10 @@
 import re
 import io
+import os
 import requests
 from bs4 import BeautifulSoup
 from pdfminer.high_level import extract_text
+from datetime import datetime
 import config
 
 def limpar_texto_extraido(texto):
@@ -41,7 +43,7 @@ def extrair_texto_html(url_html, log):
     return ""
 
 def processar_pagina_interna(url_edital, ignorar_links, nome_portal, log, palavra_chave, atualizar_tabela_func=None):
-    """Verifica duplicidade e cadastra o novo edital como PENDENTE enviando o texto completo."""
+    """Verifica duplicidade, salva o texto bruto localmente para auditoria e cadastra no Supabase."""
     try:
         if any(ign in url_edital.lower() for ign in ignorar_links): return False
 
@@ -63,6 +65,30 @@ def processar_pagina_interna(url_edital, ignorar_links, nome_portal, log, palavr
         if not texto_limpo.strip() or len(texto_limpo.strip()) < 100:
             log(f"        [⚠️] Texto extraído muito curto ou inválido. Ignorando link.")
             return False
+
+        # ----------------------------------------------------------------------
+        # [AUDITORIA] SALVA O TEXTO BRUTO QUE O ROBÔ COLETOU DO SITE EM .TXT
+        # ----------------------------------------------------------------------
+        try:
+            pasta_auditoria = os.path.join(config.DIRETORIO_PAI, "logs_auditoria")
+            os.makedirs(pasta_auditoria, exist_ok=True)
+            
+            # Cria um nome de arquivo único e seguro para o sistema de arquivos
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            nome_portal_limpo = "".join(c for c in nome_portal if c.isalnum() or c in (' ', '_', '-')).strip().replace(" ", "_")
+            nome_arquivo_txt = f"{nome_portal_limpo}_raw_texto_{timestamp}.txt"
+            caminho_txt = os.path.join(pasta_auditoria, nome_arquivo_txt)
+            
+            with open(caminho_txt, "w", encoding="utf-8") as f_audit:
+                f_audit.write(f"URL ORIGEM: {url_edital}\n")
+                f_audit.write(f"PORTAL: {nome_portal}\n")
+                f_audit.write(f"DATA COLETA: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n")
+                f_audit.write("="*80 + "\n\n")
+                f_audit.write(texto_limpo)
+            log(f"        [📝 Auditoria] Texto bruto salvo em: {nome_arquivo_txt}")
+        except Exception as e_txt:
+            log(f"        [⚠️] Falha ao salvar txt de auditoria do robô: {e_txt}")
+        # ----------------------------------------------------------------------
 
         # --- LÓGICA DE CAPTURA DUPLA INTELIGENTE (CABEÇA + CAUDA) ---
         if len(texto_limpo) > 25000:

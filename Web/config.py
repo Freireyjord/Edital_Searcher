@@ -33,6 +33,7 @@ Insira esses termos técnicos no campo "tags_ia" obrigatoriamente separados por 
 
 Siga estritamente esta estrutura para o JSON:
 {
+  "titulo": "Nome/Título oficial simplificado do edital encontrado"
   "datas": "Texto resumido com o prazo limite de submissão do edital no formato 'DD-MM-YY - DD-MM-YY' ou caso ache so a data de abertura 'Iniciado em DD-MM-YY' ou caso so a data de encerramento 'Até DD-MM-YY",
   "prazo_iso": "Data limite de submissão formatada em YYYY-MM-DD (se encontrada)",
   "vigencia_projeto": "Texto resumido com o período/vigência do projeto (ex: Data de início, término ou prorrogações encontradas)",
