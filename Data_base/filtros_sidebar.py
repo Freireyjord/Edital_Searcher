@@ -38,7 +38,7 @@ class SidebarFiltros(ctk.CTkFrame):
         self.btn_max.pack(fill="x", padx=15, pady=(4, 15))
 
         # --- SEÇÃO 2: PORTAIS ---
-        frame_matriz = ctk.CTkFrame(self, corner_radius=0, border_width=1, border_color="#2a2d32", height=130)
+        frame_matriz = ctk.CTkFrame(self, corner_radius=0, border_width=1, border_color="#2a2d32", height=180)
         frame_matriz.pack(fill="x", padx=15, pady=5)
         frame_matriz.pack_propagate(False)
         

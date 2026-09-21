@@ -1,0 +1,1 @@
+.\.venv\Scripts\python.exe -m PyInstaller --noconfirm --onedir --windowed --name "PCE" --icon "app_icone.ico" --add-data ".\.venv\Lib\site-packages\customtkinter;customtkinter" app_main.py
