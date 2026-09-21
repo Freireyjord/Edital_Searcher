@@ -1,10 +1,20 @@
-customtkinter
-requests
-beautifulsoup4
-selenium
-pypdf
-pdf2image
-pytesseract
-google-genai
-supabase
-tkcalendar
+# --- Interface Gráfica (Frontend) ---
+customtkinter>=5.2.2
+tkcalendar>=1.6.1
+babel>=2.12.1
+
+# --- Inteligência Artificial e Orquestração ---
+google-genai>=0.1.1
+
+# --- Banco de Dados e Conectividade ---
+supabase>=2.3.0
+requests>=2.31.0
+
+# --- Processamento e Extração de Texto ---
+beautifulsoup4>=4.12.3
+pypdf>=4.0.1
+pdfminer.six>=20221105
+
+# --- Visão Computacional e OCR (Imagens/PDFs Escaneados) ---
+pytesseract>=0.3.10
+pdf2image>=1.17.0
