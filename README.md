@@ -1,4 +1,7 @@
 # Edital_Searcher
+## Objetivo do App
+
+
 
 ## Bibliotecas
 pip install google-genai customtkinter selenium pypdf pdf2image pytesseract tkcalendar babel requests beautifulsoup4
