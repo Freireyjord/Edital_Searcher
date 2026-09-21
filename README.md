@@ -6,13 +6,13 @@ Este sistema consiste em um ecossistema automatizado em Python projetado para a 
 
 O projeto é dividido de forma modular em duas esteiras principais:
 
-*   ** PARTE 1: Orquestração & Esteira de Dados (Backend)**
+*   **PARTE 1: Orquestração & Esteira de Dados (Backend)**
     *   `config.py`: Definições dinâmicas e credenciais globais.
     *   `processador.py`: Motor de inteligência integrada e rotinas de faxina.
     *   `worker_background.py`: Serviço de segundo plano e loop de varredura ativa.
     *   `extrator_base.py`: Raspagem de HTML/PDF e tratamento inteligente de tokens.
 
-*   ** PARTE 2: Disponibilização & Interface Visual (Frontend)**
+*   **PARTE 2: Disponibilização & Interface Visual (Frontend)**
     *   `app_main.py`: Dashboard principal com Treeview e visualizador embutido.
     *   `filtros_sidebar.py`: Painel retrátil esquerdo (Filtros cronológicos e Tags).
     *   `colunas_sidebar.py`: Painel retrátil direito (Gerenciador dinâmico de colunas).
