@@ -24,7 +24,7 @@ def executar_ciclo_varredura():
     processador.limpar_editais_expirados_no_banco(log_worker)
     
     config.PALAVRAS_CHAVE = [""] 
-    config.PORTAIS_ATIVOS = {"cnpq": True, "finep": True, "fundep": True}
+    config.PORTAIS_ATIVOS = {"cnpq": True, "finep": True, "fundep": True, "petrobras": True}
     
     DIRETORIO_PORTAIS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "portais")
     if not os.path.exists(DIRETORIO_PORTAIS):
@@ -54,7 +54,12 @@ def executar_ciclo_varredura():
     log_worker("[Esteira] Raspagem ampla finalizada. Iniciando processamento da fila de IA...")
     status_ia = processador.consumir_fila_pendente_ia(log_worker, None)
     log_worker(f"[Esteira] Fila de IA processada com status de encerramento: {status_ia}")
+    
+    # GATILHO DO RETRABALHO AUTOMÁTICO COM REPORT
+    processador.executar_retrabalho_editais_com_erro(log_worker)
+    
     log_worker("=== CICLO DE TRABALHO ATUAL CONCLUÍDO COM SUCESSO ===")
+
 
 if __name__ == "__main__":
     # Define o intervalo de espera em repouso entre cada varredura (2 horas = 7200 segundos)
