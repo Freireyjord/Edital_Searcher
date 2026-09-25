@@ -51,7 +51,8 @@ class SidebarFiltros(ctk.CTkFrame):
         scroll_portais = ctk.CTkScrollableFrame(frame_matriz, corner_radius=0, fg_color="transparent")
         scroll_portais.pack(fill="both", expand=True, padx=2, pady=2)
 
-        arquivos_portais = ["cnpq", "finep", "fundep"]
+        arquivos_portais = ["cnpq", "finep", "fundep", "petrobras"]
+
         self.dic_vars_locais = {}
         for idx, portal_nome in enumerate(arquivos_portais):
             bg_linha = "#2a2d32" if idx % 2 == 0 else "#212325"
