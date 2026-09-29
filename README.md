@@ -57,22 +57,6 @@ Antes de rodar o projeto localmente, certifique-se de possuir instalado:
 
 ---
 
-## 🔧 Instalação e Execução
-
-1. **Clone o repositório:**
-   ```bash
-   git clone https://github.com
-   cd Edital_Searcher
-   ```
-
-2. **Instale as dependências:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-   *(Caso não possua o arquivo `.txt` criado, instale via: `pip install customtkinter supabase requests tkcalendar`)*
-
----
-
 ## 🔄 Fluxo do Mecanismo de Atualização
 
 Para gerar novas versões compatíveis com o atualizador automático do sistema:
