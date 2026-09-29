@@ -1,6 +1,0 @@
-customtkinter
-supabase
-tkcalendar
-requests
-beautifulsoup4
-babel
