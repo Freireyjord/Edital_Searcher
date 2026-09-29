@@ -1,9 +1,0 @@
-selenium
-beautifulsoup4
-requests
-pdfminer.six
-pypdf
-pdf2image
-pytesseract
-google-genai
-supabase
