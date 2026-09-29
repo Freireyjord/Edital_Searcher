@@ -1,40 +1,90 @@
-# Sistema Inteligente de Pesquisa e Triagem de Editais
+# 🔍 Painel de Consulta de Editais (PCE)
 
-Este sistema consiste em um ecossistema automatizado em Python projetado para a captura, triagem, análise e consulta inteligente de editais públicos de inovação, tecnologia e pesquisa. O software elimina o esforço humano de varredura manual, transformando editais complexos em dados estruturados, indexados e facilmente consultáveis por meio de uma interface desktop responsiva.
-
-## Arquitetura do Sistema
-
-O projeto é dividido de forma modular em duas esteiras principais:
-
-*   **PARTE 1: Orquestração & Esteira de Dados (Backend)**
-    *   `config.py`: Definições dinâmicas e credenciais globais.
-    *   `processador.py`: Motor de inteligência integrada e rotinas de faxina.
-    *   `worker_background.py`: Serviço de segundo plano e loop de varredura ativa.
-    *   `extrator_base.py`: Raspagem de HTML/PDF e tratamento inteligente de tokens.
-
-*   **PARTE 2: Disponibilização & Interface Visual (Frontend)**
-    *   `app_main.py`: Dashboard principal com Treeview e visualizador embutido.
-    *   `filtros_sidebar.py`: Painel retrátil esquerdo (Filtros cronológicos e Tags).
-    *   `colunas_sidebar.py`: Painel retrátil direito (Gerenciador dinâmico de colunas).
-    *   `config_app.py`: Persistência local de preferências do usuário (JSON).
+O **Painel de Consulta de Editais (PCE)** é uma aplicação desktop corporativa desenvolvida em Python para centralizar, filtrar e monitorar editais públicos de fomento e inovação tecnológicos. Integrado nativamente com o banco de dados em nuvem **Supabase** e o sistema de Relay de e-mails corporativo, o ecossistema permite o acompanhamento em tempo real de novas oportunidades de mercado.
 
 ---
 
-## Como o Sistema Funciona
+## 🚀 Principais Recursos
 
-1. **Varredura e Raspagem:** O `worker_background.py` aciona motores plugáveis localizados na pasta `portais/` a cada 2 horas. O conteúdo textual (HTML ou PDFs complexos com suporte a OCR/Tesseract) é extraído de forma limpa pelo `extrator_base.py`.
-2. **Estratégia de Janela de Contexto:** Para otimizar o consumo de tokens na IA, textos superiores a 25.000 caracteres passam por uma captura dupla inteligente (Cabeça + Cauda).
-3. **Análise por IA (Enriquecimento):** O texto sucintado é submetido ao modelo da API do Gemini através de um prompt restritivo que proíbe tags genéricas e gera estritamente um JSON estruturado contendo prazos, vigências, linhas de pesquisa, subvenção econômica e *tags_ia*.
-4. **Armazenamento em Nuvem:** Os registros são gravados com status `PENDENTE` e atualizados para `CONCLUIDO` no banco de dados Supabase. Editais com prazos vencidos são limpos automaticamente da base ativa por uma rotina de faxina programada.
-5. **Painel de Consulta:** A interface em CustomTkinter consome a base e utiliza um **Algoritmo de Ranqueamento por Aderência**, ordenando os editais dinamicamente no topo de acordo com a quantidade de correspondências (*matches*) encontradas entre as tags de busca locais e os metadados do edital.
+- **Interface Gráfica Moderna (GUI):** Desenvolvida com `customtkinter`, oferecendo uma experiência de usuário polida e suporte nativo ao modo escuro/claro do sistema operacional.
+- **Sincronização em Nuvem:** Integração direta com tabelas de dados do **Supabase** para buscar editais processados por IA e ler assinaturas de usuários em tempo real.
+- **Sistema Avançado de Filtros Locais:**
+  - Busca por tags e palavras-chave dinâmicas (com suporte a remoção visual e normalização de strings).
+  - Filtros por portais de origem específicos (CNPq, FINEP, FUNDEP, Petrobras).
+  - Controle de intervalos de prazos usando calendário integrado (`tkcalendar`).
+- **Gerenciamento Dinâmico de Colunas:** Permite ocultar e ordenar colunas da tabela (`Treeview`) dinamicamente sem quebrar a interface gráfica.
+- **Relatório Semanal Automatizado:** Motor interno integrado ao SMTP Relay que compila editais dos últimos 7 dias e envia e-mails formatados em HTML baseado nas preferências de cada colaborador.
+- **Fluxo de Cancelamento Seguro:** Sistema de segurança de exclusão de assinaturas por validação atômica de Token de 6 dígitos enviado por e-mail.
+- **Atualizador Automático Atômico (Auto-Updater):** O sistema verifica atualizações diretamente nas *Releases estáveis* da API do GitHub, baixa arquivos binários temporários comprimidos e executa um script patcher (`.bat`) assíncrono para auto-substituição do executável sem interrupção manual.
 
 ---
 
-## Tecnologias Utilizadas
+## 📁 Estrutura do Projeto
 
-* **Linguagem:** Python 3.11+
-* **Interface Gráfica:** CustomTkinter (Temas responsivos e componentes industriais)
-* **Orquestração de IA:** Google GenAI SDK
-* **Persistência de Dados:** Banco de Dados Supabase (PostgreSQL Cloud)
-* **Visão Computacional / OCR:** PyTesseract & PDF2Image (Para leitura de editais digitalizados em imagem)
-* **Análise de Texto:** PyPDF, PDFMiner & BeautifulSoup4
+O projeto adota uma arquitetura modularizada separando regras de negócios e configurações centrais da interface visual:
+
+```text
+Edital_Searcher/
+│
+├── app_main.py                 # Ponto de entrada principal da aplicação (AppSincronizador)
+├── config_app.json             # Preferências e tags salvas localmente no computador do usuário
+│
+├── core/                       # Módulos centrais de infraestrutura de dados
+│   ├── config.py               # Inicializador do cliente Supabase e persistência do JSON local
+│   ├── email_engine.py         # Motor de compilação, normalização e disparo de relatórios HTML
+│   └── updater.py              # Validador de versões via GitHub API e injeção do script patcher
+│
+└── views/                      # Camada de componentes visuais do CustomTkinter
+    ├── aba_resultados.py       # Gerenciamento da aba principal, ordenação de dados e resumos de IA
+    ├── aba_relatorio.py        # Painel de assinaturas, gerenciador de tags e fluxos de token
+    ├── filtros_sidebar.py      # Painel lateral esquerdo para filtros de data, portais e termos
+    └── colunas_sidebar.py      # Painel lateral direito para exibição seletiva de colunas
+```
+
+---
+
+## 🛠️ Pré-requisitos & Tecnologias
+
+Antes de rodar o projeto localmente, certifique-se de possuir instalado:
+- **Python 3.10 ou superior**
+- Banco de dados configurado no **Supabase** (Tabelas: `editais` e `configuracoes_relatorio`)
+
+### Dependências principais:
+- `customtkinter` (Interface gráfica)
+- `supabase` (Cliente de conexão com o banco de dados)
+- `requests` (Chamadas HTTP para API do GitHub)
+- `tkcalendar` (Componente visual de calendário)
+
+---
+
+## 🔧 Instalação e Execução
+
+1. **Clone o repositório:**
+   ```bash
+   git clone https://github.com
+   cd Edital_Searcher
+   ```
+
+2. **Instale as dependências:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+   *(Caso não possua o arquivo `.txt` criado, instale via: `pip install customtkinter supabase requests tkcalendar`)*
+
+---
+
+## 🔄 Fluxo do Mecanismo de Atualização
+
+Para gerar novas versões compatíveis com o atualizador automático do sistema:
+1. Altere a constante `VERSAO_ATUAL` no arquivo `core/updater.py` (ex: `"1.0.3"`).
+2. Gere o executável congelado do sistema (utilizando ferramentas como o `PyInstaller`).
+3. Empacote os arquivos binários gerados na pasta de destino em um arquivo compactado obrigatoriamente chamado **`PCE.zip`**.
+4. Crie uma nova **Release** no seu repositório do GitHub com a correspondente Tag da versão (ex: `v1.0.3`) e anexe o arquivo `PCE.zip` nos Assets da release.
+5. O aplicativo instalado nas máquinas clientes detectará a alteração via API do GitHub no próximo ciclo de inicialização.
+
+---
+
+## 📝 Licença e Uso Corporativo
+
+Este software foi desenvolvido para otimização de fluxos de análise e inteligência de mercado de editais. 
+Todos os direitos reservados à infraestrutura interna de tecnologia associada.
