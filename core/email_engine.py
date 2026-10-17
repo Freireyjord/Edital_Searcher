@@ -1,4 +1,4 @@
-import smtplib, unicodedata
+import html, json, os, smtplib, unicodedata
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -10,10 +10,44 @@ from core import config
 # ==============================================================================
 # 🔐 CONFIGURAÇÕES DE RELAY CORPORATIVO INTERNO - FIEB
 # ==============================================================================
-SMTP_SERVIDOR = "fieb-org-br.mail.protection.outlook.com"
-SMTP_PORTA = 25
-SMTP_REMETENTE = "joao.freire@fbter.org.br"
-SMTP_SENHA = ""
+# Os dados do relay NÃO ficam mais no código (o repositório é público).
+# Crie "smtp_config.json" ao lado do executável (veja smtp_config.example.json).
+# O arquivo está no .gitignore; inclua-o no PCE.zip distribuído aos colaboradores.
+CAMINHO_SMTP_CONFIG = os.path.join(config.DIRETORIO_RAIFS, "smtp_config.json")
+
+
+def carregar_config_smtp(caminho=CAMINHO_SMTP_CONFIG):
+    try:
+        with open(caminho, "r", encoding="utf-8") as f:
+            dados = json.load(f)
+        return {
+            "servidor": str(dados.get("servidor", "")).strip(),
+            "porta": int(dados.get("porta", 25)),
+            "remetente": str(dados.get("remetente", "")).strip(),
+        }
+    except (OSError, ValueError, TypeError):
+        return {"servidor": "", "porta": 25, "remetente": ""}
+
+
+_SMTP = carregar_config_smtp()
+SMTP_SERVIDOR = _SMTP["servidor"]
+SMTP_PORTA = _SMTP["porta"]
+SMTP_REMETENTE = _SMTP["remetente"]
+
+
+def smtp_configurado():
+    return bool(SMTP_SERVIDOR and SMTP_REMETENTE)
+
+def _e(valor):
+    """Escapa texto vindo do banco/IA/sites raspados antes de entrar no HTML do e-mail."""
+    return html.escape("" if valor is None else str(valor))
+
+
+def _url_segura(url):
+    """Só links http(s); qualquer outra coisa (javascript:, data:) vira '#'."""
+    url = str(url or "").strip()
+    return html.escape(url, quote=True) if url.lower().startswith(("http://", "https://")) else "#"
+
 
 def normalizar_texto_report(texto):
     if not texto: return ""
@@ -26,6 +60,10 @@ def compilar_e_enviar_relatorio_semanal(email_alvo, log_func):
     filtra de acordo com as preferências do e-mail informado e realiza 
     o disparo do relatório formatado em HTML via Relay corporativo.
     """
+    if not smtp_configurado():
+        log_func("[⚠️ ABORTADO] SMTP não configurado: arquivo smtp_config.json ausente ou incompleto.")
+        return False
+
     log_func(f"Puxando configurações de assinatura para {email_alvo} no Supabase...")
     
     if not email_alvo:
@@ -58,7 +96,7 @@ def compilar_e_enviar_relatorio_semanal(email_alvo, log_func):
 
     try:
         # Busca no banco tudo o que foi gerado com sucesso nos últimos 7 dias pelos robôs
-        resposta = config.supabase.table("editais").select("*").gte("created_at", data_corte_iso).eq("status_ia", "CONCLUIDO").execute()
+        resposta = config.supabase.table("editais").select("titulo,portal,datas,vigencia_projeto,subvencao,tags_ia,escopo,url").gte("created_at", data_corte_iso).eq("status_ia", "CONCLUIDO").execute()
         editais_capturados = resposta.data if hasattr(resposta, 'data') else resposta
     except Exception as e:
         log_func(f"[X] Falha ao consultar tabela editais: {e}")
@@ -66,7 +104,7 @@ def compilar_e_enviar_relatorio_semanal(email_alvo, log_func):
 
     if not editais_capturados:
         log_func("[✨] Nenhum edital novo inserido no banco nos últimos 7 dias. Envio cancelado.")
-        return True
+        return False
 
     editais_filtrados = []
     for edital in editais_capturados:
@@ -84,7 +122,7 @@ def compilar_e_enviar_relatorio_semanal(email_alvo, log_func):
 
     if not editais_filtrados:
         log_func("[✨] Os robôs acharam editais, mas nenhum bate com as tags salvas pelo usuário.")
-        return True
+        return False
 
     html_corpo = f"""
     <html><head><style>
@@ -108,14 +146,14 @@ def compilar_e_enviar_relatorio_semanal(email_alvo, log_func):
     for item in editais_filtrados:
         html_corpo += f"""
             <div class="card">
-                <h3>{item.get('titulo', 'Edital sem título')}</h3>
+                <h3>{_e(item.get('titulo') or 'Edital sem título')}</h3>
                 <div class="meta">
-                    <strong>Portal:</strong> {item.get('portal', 'N/A')} | <strong>Prazo:</strong> {item.get('datas', 'A consultar')}<br>
-                    <strong>Vigência:</strong> {item.get('vigencia_projeto', 'N/A')} | <strong>Verba:</strong> {item.get('subvencao', 'N/A')}<br>
-                    <strong>Tags:</strong> <i>{item.get('tags_ia', 'Geral')}</i>
+                    <strong>Portal:</strong> {_e(item.get('portal') or 'N/A')} | <strong>Prazo:</strong> {_e(item.get('datas') or 'A consultar')}<br>
+                    <strong>Vigência:</strong> {_e(item.get('vigencia_projeto') or 'N/A')} | <strong>Verba:</strong> {_e(item.get('subvencao') or 'N/A')}<br>
+                    <strong>Tags:</strong> <i>{_e(item.get('tags_ia') or 'Geral')}</i>
                 </div>
-                <div class="escopo"><strong>Resumo:</strong> {item.get('escopo', 'Sem resumo.')}</div>
-                <a href="{item.get('url', '#')}" class="btn-link" target="_blank">VISUALIZAR EDITAL FONTE</a>
+                <div class="escopo"><strong>Resumo:</strong> {_e(item.get('escopo') or 'Sem resumo.')}</div>
+                <a href="{_url_segura(item.get('url'))}" class="btn-link" target="_blank">VISUALIZAR EDITAL FONTE</a>
             </div>
         """
     html_corpo += "</div></body></html>"

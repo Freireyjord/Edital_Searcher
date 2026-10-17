@@ -55,6 +55,8 @@ Antes de rodar o projeto localmente, certifique-se de possuir instalado:
 - `requests` (Chamadas HTTP para API do GitHub)
 - `tkcalendar` (Componente visual de calendário)
 
+> Scraping, IA, PDFs e OCR pertencem ao repositório do robô. A UI não depende dessas bibliotecas.
+
 ---
 
 ## 🔄 Fluxo do Mecanismo de Atualização
@@ -64,6 +66,7 @@ Para gerar novas versões compatíveis com o atualizador automático do sistema:
 2. Gere o executável congelado do sistema (utilizando ferramentas como o `PyInstaller`).
 3. Empacote os arquivos binários gerados na pasta de destino em um arquivo compactado obrigatoriamente chamado **`PCE.zip`**.
 4. Crie uma nova **Release** no seu repositório do GitHub com a correspondente Tag da versão (ex: `v1.0.3`) e anexe o arquivo `PCE.zip` nos Assets da release.
+   O atualizador **exige o hash SHA-256** do zip: o GitHub o calcula automaticamente para novos assets; se a release não o expuser, anexe também um arquivo `PCE.zip.sha256` (Windows: `certutil -hashfile PCE.zip SHA256`).
 5. O aplicativo instalado nas máquinas clientes detectará a alteração via API do GitHub no próximo ciclo de inicialização.
 
 ---

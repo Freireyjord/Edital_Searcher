@@ -19,3 +19,7 @@ __pycache__/
 # Arquivos locais de configuração/histórico (caso existam)
 config_app.json
 resultados_editais.json
+
+# Segredos/ambiente local (NUNCA versionar)
+smtp_config.json
+.env

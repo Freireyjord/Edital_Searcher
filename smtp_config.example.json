@@ -1,0 +1,5 @@
+{
+    "servidor": "SEU-RELAY.mail.protection.outlook.com",
+    "porta": 25,
+    "remetente": "remetente@seudominio.org.br"
+}

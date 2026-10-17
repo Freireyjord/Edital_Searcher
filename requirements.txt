@@ -1,20 +1,11 @@
-# --- Interface Gráfica (Frontend) ---
+# --- Interface gráfica ---
 customtkinter>=5.2.2
 tkcalendar>=1.6.1
 babel>=2.12.1
 
-# --- Inteligência Artificial e Orquestração ---
-google-genai>=0.1.1
-
-# --- Banco de Dados e Conectividade ---
+# --- Banco de dados e rede ---
 supabase>=2.3.0
 requests>=2.31.0
 
-# --- Processamento e Extração de Texto ---
-beautifulsoup4>=4.12.3
-pypdf>=4.0.1
-pdfminer.six>=20221105
-
-# --- Visão Computacional e OCR (Imagens/PDFs Escaneados) ---
-pytesseract>=0.3.10
-pdf2image>=1.17.0
+# (Scraping, IA, PDFs e OCR pertencem ao repositório do robô; a UI não usa e
+#  não deve empacotar essas bibliotecas no executável.)
