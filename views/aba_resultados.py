@@ -1,11 +1,12 @@
 import json
-from datetime import datetime
+import threading
 from tkinter import ttk
 import customtkinter as ctk
 
 # 🔍 IMPORTAÇÃO DOS MÓDULOS DE CORE E OUTRAS VIEWS
-from core import config
-from views.filtros_sidebar import SidebarFiltros, normalizar_texto
+from core import config, editais_repo
+from core.filtro_editais import aplicar_filtros
+from views.filtros_sidebar import SidebarFiltros
 from views.colunas_sidebar import SidebarColunas
 
 def inicializar_aba_resultados(app):
@@ -21,6 +22,9 @@ def inicializar_aba_resultados(app):
     
     app.colunas_visiveis = ["titulo", "portal", "datas", "vigencia_projeto", "palavra_chave"]
     app.ultima_ordenacao = {"coluna": None, "reverse": False}
+    app.cache_editais = []      # lista (leve) baixada da nuvem; filtros locais operam sobre ela
+    app.cache_detalhes = {}     # url -> {escopo, pesquisa, subvencao} carregados sob demanda
+    app._carregando = False
 
     # 🛠️ BARRA DE FERRAMENTAS SUPERIOR
     app.frame_ferramentas = ctk.CTkFrame(app.tab_resultados, height=45, corner_radius=0, fg_color="transparent")
@@ -47,13 +51,21 @@ def inicializar_aba_resultados(app):
     app.lbl_filtros_ativos.pack(side="left", padx=15, pady=5)
 
     # 📊 CONFIGURAÇÃO DA TABELA TREEVIEW
-    app.tabela = ttk.Treeview(app.tab_resultados, show="headings", style="Treeview")
-    app.scroll_y_tabela = ttk.Scrollbar(app.tab_resultados, orient="vertical", command=app.tabela.yview)
-    app.tabela.configure(yscrollcommand=app.scroll_y_tabela.set)
-    
+    # Tabela + barras de rolagem num container próprio: em telas estreitas as colunas rolam na horizontal
+    app.frame_tabela = ctk.CTkFrame(app.tab_resultados, corner_radius=0, fg_color="transparent")
+    app.frame_tabela.grid(row=1, column=1, sticky="nsew", padx=(5, 0))
+    app.frame_tabela.grid_rowconfigure(0, weight=1)
+    app.frame_tabela.grid_columnconfigure(0, weight=1)
+
+    app.tabela = ttk.Treeview(app.frame_tabela, show="headings", style="Treeview")
+    app.scroll_y_tabela = ttk.Scrollbar(app.frame_tabela, orient="vertical", command=app.tabela.yview)
+    app.scroll_x_tabela = ttk.Scrollbar(app.frame_tabela, orient="horizontal", command=app.tabela.xview)
+    app.tabela.configure(yscrollcommand=app.scroll_y_tabela.set, xscrollcommand=app.scroll_x_tabela.set)
+
     reconfigurar_colunas_tabela(app)
-    app.tabela.grid(row=1, column=1, sticky="nsew", padx=(5, 0))
-    app.scroll_y_tabela.grid(row=1, column=3, sticky="ns")
+    app.tabela.grid(row=0, column=0, sticky="nsew")
+    app.scroll_y_tabela.grid(row=0, column=1, sticky="ns")
+    app.scroll_x_tabela.grid(row=1, column=0, sticky="ew")
     
     app.tabela.bind("<<TreeviewSelect>>", app.evento_linha_selecionada)
     app.tabela.bind("<Double-1>", app.abrir_link_edital)
@@ -93,10 +105,10 @@ def reconfigurar_colunas_tabela(app):
 
     for col in app.colunas_visiveis:
         app.tabela.heading(col, text=titulos[col], command=lambda c=col: ordenar_por_coluna(app, c))
-        app.tabela.column(col, width=larguras[col], anchor=alinhamentos[col])
+        app.tabela.column(col, width=larguras[col], minwidth=70, anchor=alinhamentos[col])
 
     if linhas_antigas:
-        atualizar_tabela_local(app)
+        reaplicar_filtros_locais(app)   # só redesenha; não precisa ir à nuvem
 
 
 def ordenar_por_coluna(app, id_coluna):
@@ -181,118 +193,142 @@ def alternar_sidebar_colunas(app):
         app.btn_colunas_toggle.configure(fg_color="#1f6aa5", text="FECHAR COLUNAS")
         app.sidebar_colunas = SidebarColunas(app.tab_resultados, app_callback=app)
         app.sidebar_colunas.grid(row=0, column=2, rowspan=3, padx=(10, 5), pady=5, sticky="nsew")
-def atualizar_tabela_local(app):
-    """Consulta o banco de dados Supabase e atualiza as linhas da Treeview com base nos filtros locais."""
-    for item in app.tabela.get_children(): 
+def atualizar_tabela_local(app, ao_concluir=None):
+    """
+    Baixa a lista de editais do Supabase em segundo plano (a janela não congela)
+    e redesenha a tabela. `ao_concluir(erro)` é chamado na thread da interface.
+    """
+    if getattr(app, "_carregando", False):
+        return
+    app._carregando = True
+    if hasattr(app, "lbl_status"):
+        app.lbl_status.configure(text="Status: Consultando base de editais no Supabase...")
+
+    def tarefa():
+        try:
+            editais, erro = editais_repo.buscar_editais_visiveis(), None
+        except Exception as e:
+            editais, erro = None, e
+        try:
+            app.after(0, lambda: _finalizar_carga(app, editais, erro, ao_concluir))
+        except Exception:
+            pass   # janela já foi fechada
+
+    threading.Thread(target=tarefa, daemon=True).start()
+
+
+def _finalizar_carga(app, editais, erro, ao_concluir):
+    app._carregando = False
+    if erro is None:
+        app.cache_editais = editais
+        app.cache_detalhes.clear()
+        renderizar_tabela(app)
+        _atualizar_status_contagem(app)
+        if getattr(app, "sidebar_filtros", None):
+            app.sidebar_filtros.atualizar_portais()   # portais novos do Supabase aparecem no filtro
+    else:
+        print(f"Erro tabela nuvem: {erro}")
+        if hasattr(app, "lbl_status"):
+            app.lbl_status.configure(text=f"Status: Falha ao consultar o Supabase: {erro}")
+    if ao_concluir:
+        ao_concluir(erro)
+
+
+def reaplicar_filtros_locais(app):
+    """Refiltra os dados que já estão em memória (tags, portais, datas, colunas)."""
+    renderizar_tabela(app)
+    _atualizar_status_contagem(app)
+
+
+def _atualizar_status_contagem(app):
+    if hasattr(app, "lbl_status"):
+        exibidos = len(app.tabela.get_children())
+        app.lbl_status.configure(text=f"Status: {exibidos} editais exibidos ({len(app.cache_editais)} abertos na base).")
+
+
+def renderizar_tabela(app):
+    for item in app.tabela.get_children():
         app.tabela.delete(item)
-    try:
-        resposta = config.supabase.table("editais").select("*").execute()
-        editais = resposta.data if hasattr(resposta, 'data') else resposta
-        editais_ordenados = sorted(editais, key=lambda x: x.get("prazo_iso") if x.get("prazo_iso") is not None else "9999-12-31 23:59")
-        
-        hoje = datetime.now().date()
-        dt_corte_min = datetime.strptime(app.filtro_data_min, "%d/%m/%Y").date() if app.filtro_data_min else None
-        dt_corte_max = datetime.strptime(app.filtro_data_max, "%d/%m/%Y").date() if app.filtro_data_max else None
-        termos_filtro_usuario = [normalizar_texto(t) for t in config.PALAVRAS_CHAVE if t.strip()]
-        editais_para_inserir = []
 
-        for edital in editais_ordenados:
-            status_limpo = str(edital.get("status_ia") or "").strip().lower()
-            if status_limpo in ["descartado_vencido", "pendente", "erro_sem_texto", "expirado", ""]: 
-                continue
-
-            portal_bruto = edital.get("portal", "N/A")
-            portal_limpo = str(portal_bruto).strip().lower()
-            
-            modulo_chave = portal_limpo.split(" ")[0] if " " in portal_limpo else portal_limpo
-            if app.filtro_portais and not app.filtro_portais.get(modulo_chave, True): 
-                continue
-            
-            prazo_texto_bruto, prazo_iso_bruto = edital.get("datas", "") or "", edital.get("prazo_iso", "") or ""
-            texto_prazo_formatated = "A consultar"
-            dt_item = None
-
-            if prazo_iso_bruto and "9999" not in str(prazo_iso_bruto):
-                try:
-                    data_iso_limpa = str(prazo_iso_bruto).strip().split(" ")[0]
-                    dt_item = datetime.strptime(data_iso_limpa, "%Y-%m-%d").date()
-                    texto_prazo_formatated = f"Até {dt_item.strftime('%d/%m/%Y')}"
-                except: 
-                    dt_item = None
-
-            if not dt_item:
-                if "contínuo" in prazo_texto_bruto.lower() or "fluxo" in prazo_texto_bruto.lower(): 
-                    texto_prazo_formatated = "Fluxo Contínuo"
-                else:
-                    texto_limpo = prazo_texto_bruto.replace("Envio de propostas ", "").strip()
-                    texto_limpo = texto_limpo.split(", às")[0] if ", às" in texto_limpo else (texto_limpo.split(", as")[0] if ", as" in texto_limpo else texto_limpo)
-                    texto_prazo_formatated = texto_limpo.strip() if texto_limpo else "A consultar"
-
-            if dt_item:
-                if dt_item < hoje or (dt_corte_min and dt_item < dt_corte_min) or (dt_corte_max and dt_item > dt_corte_max): 
-                    continue
-
-            tags_brutas_ia = edital.get("tags_ia", "") or ""
-            lista_tags_edital = [tag.strip() for tag in tags_brutas_ia.split(",") if tag.strip()]
-            titulo_edital_limpo = normalizar_texto(edital.get("titulo", ""))
-            tags_encontradas_no_filtro = []
-
-            for palavra_usuario in config.PALAVRAS_CHAVE:
-                palavra_usuario_limpa = normalizar_texto(palavra_usuario)
-                if not palavra_usuario_limpa: 
-                    continue
-                if palavra_usuario_limpa in titulo_edital_limpo:
-                    if palavra_usuario not in tags_encontradas_no_filtro: 
-                        tags_encontradas_no_filtro.append(palavra_usuario)
-                    continue
-                for tag_edital in lista_tags_edital:
-                    if palavra_usuario_limpa in normalizar_texto(tag_edital) or normalizar_texto(tag_edital) in palavra_usuario_limpa:
-                        if palavra_usuario not in tags_encontradas_no_filtro: 
-                            tags_encontradas_no_filtro.append(palavra_usuario)
-
-            if len(termos_filtro_usuario) > 0 and not tags_encontradas_no_filtro: 
-                continue
-            texto_coluna_termos = ", ".join(tags_encontradas_no_filtro) if tags_encontradas_no_filtro else "Geral / Amplo"
-            
-            mapa_valores_completos = {
-                "titulo": edital.get("titulo") or "Edital sem título", 
-                "portal": portal_bruto, 
-                "datas": texto_prazo_formatated, 
-                "vigencia_projeto": edital.get("vigencia_projeto", "N/A") or "N/A", 
-                "palavra_chave": texto_coluna_termos
-            }
-            
-            editais_para_inserir.append((len(tags_encontradas_no_filtro), mapa_valores_completos, edital))
-
-        editais_para_inserir.sort(key=lambda x: x[0], reverse=True)
-        for qtd, valores_completos, edital_obj in editais_para_inserir:
-            app.tabela.insert(
-                "", "end", 
-                values=tuple(valores_completos[col] for col in app.colunas_visiveis), 
-                tags=(edital_obj.get("url", ""), json.dumps(edital_obj))
-            )
-    except Exception as e: 
-        print(f"Erro tabela nuvem: {e}")
+    linhas = aplicar_filtros(
+        app.cache_editais,
+        portais=app.filtro_portais,
+        data_min=app.filtro_data_min,
+        data_max=app.filtro_data_max,
+        palavras_chave=config.PALAVRAS_CHAVE,
+    )
+    for _qtd, valores, edital in linhas:
+        app.tabela.insert(
+            "", "end",
+            values=tuple(valores[col] for col in app.colunas_visiveis),
+            tags=(edital.get("url", ""), json.dumps(edital)),
+        )
 
 
 def exibir_resumo_linha_selecionada(app):
-    """Captura o item ativo na Treeview e exibe o resumo textual formatado da IA no painel inferior."""
+    """Mostra os dados da linha e carrega o resumo (escopo/pesquisa/verba) sob demanda."""
     item_selecionado = app.tabela.selection()
-    if not item_selecionado: 
+    if not item_selecionado:
         return
     tags = app.tabela.item(item_selecionado, "tags")
-    if len(tags) >= 2:
-        edital = json.loads(tags[1])
-        texto_formatado = (
-            f"PORTAL DE ORIGEM: {edital.get('portal','N/A')}\n"
-            f"PRAZO DE SUBMISSAO: {edital.get('datas','N/A')}\n"
-            f"PRAZO DE EXECUÇÃO: {edital.get('vigencia_projeto','N/A')}\n"
-            f"TAGS DO EDITAL (IA): {edital.get('tags_ia','Nenhuma')}\n"
-            f"LINHA DE PESQUISA: {edital.get('pesquisa','N/A')}\n"
-            f"ORCAMENTO / VERBA: {edital.get('subvencao','N/A')}\n\n"
-            f"RESUMO DO ESCOPO:\n{edital.get('escopo','N/A')}"
-        )
-        app.txt_detalhes_escopo.configure(state="normal")
-        app.txt_detalhes_escopo.delete("1.0", "end")
-        app.txt_detalhes_escopo.insert("1.0", texto_formatado)
-        app.txt_detalhes_escopo.configure(state="disabled")
+    if len(tags) < 2:
+        return
+
+    edital = json.loads(tags[1])
+    url = edital.get("url", "")
+    detalhe = app.cache_detalhes.get(url)
+    _mostrar_detalhe(app, edital, detalhe)
+
+    if detalhe is None and url:
+        def tarefa():
+            try:
+                det = editais_repo.buscar_detalhe(url)
+            except Exception as e:
+                det = {"_erro": str(e)}
+            try:
+                app.after(0, lambda: _detalhe_carregado(app, url, det))
+            except Exception:
+                pass
+        threading.Thread(target=tarefa, daemon=True).start()
+
+
+def _detalhe_carregado(app, url, detalhe):
+    if "_erro" not in detalhe:
+        app.cache_detalhes[url] = detalhe
+    # só atualiza o painel se o usuário ainda estiver na mesma linha
+    item = app.tabela.selection()
+    if not item:
+        return
+    tags = app.tabela.item(item, "tags")
+    if len(tags) < 2:
+        return
+    edital = json.loads(tags[1])
+    if edital.get("url") == url:
+        _mostrar_detalhe(app, edital, detalhe)
+
+
+def _mostrar_detalhe(app, edital, detalhe):
+    if detalhe is None:
+        pesquisa = verba = "Carregando..."
+        escopo = "Carregando resumo do edital..."
+    elif "_erro" in detalhe:
+        pesquisa = verba = "N/A"
+        escopo = f"Não foi possível carregar o resumo: {detalhe['_erro']}"
+    else:
+        pesquisa = detalhe.get("pesquisa") or "N/A"
+        verba = detalhe.get("subvencao") or "N/A"
+        escopo = detalhe.get("escopo") or "N/A"
+
+    texto_formatado = (
+        f"PORTAL DE ORIGEM: {edital.get('portal','N/A')}\n"
+        f"PRAZO DE SUBMISSAO: {edital.get('datas','N/A')}\n"
+        f"PRAZO DE EXECUÇÃO: {edital.get('vigencia_projeto','N/A')}\n"
+        f"TAGS DO EDITAL (IA): {edital.get('tags_ia') or 'Nenhuma'}\n"
+        f"LINHA DE PESQUISA: {pesquisa}\n"
+        f"ORCAMENTO / VERBA: {verba}\n\n"
+        f"RESUMO DO ESCOPO:\n{escopo}"
+    )
+    app.txt_detalhes_escopo.configure(state="normal")
+    app.txt_detalhes_escopo.delete("1.0", "end")
+    app.txt_detalhes_escopo.insert("1.0", texto_formatado)
+    app.txt_detalhes_escopo.configure(state="disabled")

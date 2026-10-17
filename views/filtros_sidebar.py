@@ -1,88 +1,71 @@
-import unicodedata
 import customtkinter as ctk
 from tkcalendar import Calendar
 
 # 🔍 IMPORTAÇÃO DO ARQUIVO DE CONFIGURAÇÃO DO CORE
 from core import config
-
-def normalizar_texto(texto):
-    """Remove acentos, converte para minúsculo e limpa espaços extras de forma padronizada."""
-    if not texto:
-        return ""
-    texto = str(texto).strip().lower()
-    texto = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
-    return texto
+from core.filtro_editais import normalizar_texto, portais_disponiveis  # noqa: F401 (normalizar_texto reexportado)
 
 
 class SidebarFiltros(ctk.CTkFrame):
     def __init__(self, master, app_callback, **kwargs):
-        # Define a largura fixa corporativa estável para o painel lateral esquerdo
+        # Largura fixa; a altura acompanha a janela (o conteúdo rola se não couber)
         super().__init__(master, width=290, corner_radius=0, border_width=1, border_color="#3a3d42", **kwargs)
         self.grid_propagate(False)
-        
+        self.pack_propagate(False)
+
         self.app = app_callback  # Referência de escopo da janela mestre
 
-        lbl_pop_title = ctk.CTkLabel(self, text="FILTROS LOCAIS ATIVOS", font=ctk.CTkFont(family="Arial", size=13, weight="bold"))
-        lbl_pop_title.pack(pady=(15, 10))
-        
+        # Todo o conteúdo fica num painel rolável: em telas de baixa resolução nada fica escondido.
+        self.conteudo = ctk.CTkScrollableFrame(self, corner_radius=0, fg_color="transparent")
+        self.conteudo.pack(fill="both", expand=True)
+
+        lbl_pop_title = ctk.CTkLabel(self.conteudo, text="FILTROS LOCAIS ATIVOS", font=ctk.CTkFont(family="Arial", size=13, weight="bold"))
+        lbl_pop_title.pack(pady=(10, 10))
+
         # --- SEÇÃO 1: INTERVALOS DE DATAS ---
-        frame_datas = ctk.CTkFrame(self, corner_radius=0, border_width=1, border_color="#2a2d32")
-        frame_datas.pack(fill="x", padx=15, pady=5)
-        
+        frame_datas = ctk.CTkFrame(self.conteudo, corner_radius=0, border_width=1, border_color="#2a2d32")
+        frame_datas.pack(fill="x", padx=8, pady=5)
+
         lbl_d = ctk.CTkLabel(frame_datas, text="Intervalo de Prazos:", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
-        lbl_d.pack(anchor="w", padx=15, pady=(10, 5))
-        
+        lbl_d.pack(anchor="w", padx=12, pady=(10, 5))
+
         txt_d_min = self.app.filtro_data_min if self.app.filtro_data_min else "DATA INICIAL"
         self.btn_min = ctk.CTkButton(frame_datas, text=txt_d_min, corner_radius=0, fg_color="#2c3e50", command=lambda: self.selecionar_data_calendario("min"))
-        self.btn_min.pack(fill="x", padx=15, pady=4)
-        
+        self.btn_min.pack(fill="x", padx=12, pady=4)
+
         txt_d_max = self.app.filtro_data_max if self.app.filtro_data_max else "DATA FINAL"
         self.btn_max = ctk.CTkButton(frame_datas, text=txt_d_max, corner_radius=0, fg_color="#2c3e50", command=lambda: self.selecionar_data_calendario("max"))
-        self.btn_max.pack(fill="x", padx=15, pady=(4, 15))
+        self.btn_max.pack(fill="x", padx=12, pady=(4, 12))
 
-        # --- SEÇÃO 2: MATRIZ DE SELEÇÃO DE PORTAIS ---
-        frame_matriz = ctk.CTkFrame(self, corner_radius=0, border_width=1, border_color="#2a2d32", height=180)
-        frame_matriz.pack(fill="x", padx=15, pady=5)
-        frame_matriz.pack_propagate(False)
-        
+        # --- SEÇÃO 2: PORTAIS DE ORIGEM (descobertos a partir do Supabase) ---
+        frame_matriz = ctk.CTkFrame(self.conteudo, corner_radius=0, border_width=1, border_color="#2a2d32")
+        frame_matriz.pack(fill="x", padx=8, pady=5)
+
         frame_header = ctk.CTkFrame(frame_matriz, height=26, corner_radius=0, fg_color="#1f6aa5")
         frame_header.pack(fill="x", side="top")
-        
+
         lbl_h2 = ctk.CTkLabel(frame_header, text="PORTAIS DE ORIGEM", font=ctk.CTkFont(family="Arial", size=10, weight="bold"), text_color="white")
         lbl_h2.pack(anchor="w", padx=10, pady=2)
-        
-        scroll_portais = ctk.CTkScrollableFrame(frame_matriz, corner_radius=0, fg_color="transparent")
-        scroll_portais.pack(fill="both", expand=True, padx=2, pady=2)
 
-        arquivos_portais = ["cnpq", "finep", "fundep", "petrobras"]
+        self.frame_lista_portais = ctk.CTkFrame(frame_matriz, corner_radius=0, fg_color="transparent")
+        self.frame_lista_portais.pack(fill="x", padx=2, pady=2)
 
         self.dic_vars_locais = {}
-        for idx, portal_nome in enumerate(arquivos_portais):
-            bg_linha = "#2a2d32" if idx % 2 == 0 else "#212325"
-            frame_linha = ctk.CTkFrame(scroll_portais, height=30, corner_radius=0, fg_color=bg_linha)
-            frame_linha.pack(fill="x", side="top", pady=1)
-            
-            estado_atual = config.PORTAIS_ATIVOS.get(portal_nome, True)
-            v_loc = ctk.BooleanVar(value=estado_atual)
-            self.dic_vars_locais[portal_nome] = v_loc
-            
-            chk = ctk.CTkCheckBox(frame_linha, text="", variable=v_loc, width=20, corner_radius=0)
-            chk.pack(side="left", padx=10, pady=4)
-            
-            lbl_pname = ctk.CTkLabel(frame_linha, text=portal_nome.upper(), font=ctk.CTkFont(family="Arial", size=10, weight="bold"), text_color="#e0e0e0")
-            lbl_pname.pack(side="left", padx=5, pady=4)
-        # --- SEÇÃO 3: PALAVRAS-CHAVE (ALTURA FIXADA) ---
-        frame_keywords = ctk.CTkFrame(self, corner_radius=0, border_width=1, border_color="#2a2d32")
-        frame_keywords.pack(fill="x", padx=15, pady=5)
-        
-        lbl_kw = ctk.CTkLabel(frame_keywords, text="Tags de Busca (Enter ou Vírgula):", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
-        lbl_kw.pack(anchor="w", padx=15, pady=(10, 3))
-        
-        self.entry_tag = ctk.CTkEntry(frame_keywords, placeholder_text="Adicionar palavra...", corner_radius=0, font=("Arial", 11))
-        self.entry_tag.pack(fill="x", padx=15, pady=(0, 5))
+        self._montar_lista_portais()
 
-        self.scroll_tags = ctk.CTkScrollableFrame(frame_keywords, height=110, corner_radius=0, fg_color="#1e1e1e")
-        self.scroll_tags.pack(fill="x", padx=15, pady=(0, 10))
+        # --- SEÇÃO 3: PALAVRAS-CHAVE ---
+        frame_keywords = ctk.CTkFrame(self.conteudo, corner_radius=0, border_width=1, border_color="#2a2d32")
+        frame_keywords.pack(fill="x", padx=8, pady=5)
+
+        lbl_kw = ctk.CTkLabel(frame_keywords, text="Tags de Busca (Enter ou Vírgula):", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
+        lbl_kw.pack(anchor="w", padx=12, pady=(10, 3))
+
+        self.entry_tag = ctk.CTkEntry(frame_keywords, placeholder_text="Adicionar palavra...", corner_radius=0, font=("Arial", 11))
+        self.entry_tag.pack(fill="x", padx=12, pady=(0, 5))
+
+        # Container simples (sem rolagem própria: o painel externo já rola; evita roda do mouse duplicada)
+        self.scroll_tags = ctk.CTkFrame(frame_keywords, height=50, corner_radius=0, fg_color="#1e1e1e")
+        self.scroll_tags.pack(fill="x", padx=12, pady=(0, 10))
 
         self.lista_tags = list(config.PALAVRAS_CHAVE)
 
@@ -90,6 +73,43 @@ class SidebarFiltros(ctk.CTkFrame):
         self.entry_tag.bind(",", self.adicionar_tag_evt)
         self.renderizar_tags()
 
+    # ------------------------------------------------------------------ portais
+    def _montar_lista_portais(self):
+        """Desenha um checkbox por portal presente nos editais carregados do Supabase."""
+        for widget in self.frame_lista_portais.winfo_children():
+            widget.destroy()
+
+        portais = portais_disponiveis(getattr(self.app, "cache_editais", []))
+        if not portais:
+            ctk.CTkLabel(
+                self.frame_lista_portais, text="Nenhum portal carregado ainda.\nClique em ATUALIZAR TABELA.",
+                font=ctk.CTkFont(family="Arial", size=10), text_color="#95a5a6", justify="left"
+            ).pack(anchor="w", padx=10, pady=10)
+            return
+
+        for idx, (chave, rotulo) in enumerate(portais):
+            bg_linha = "#2a2d32" if idx % 2 == 0 else "#212325"
+            frame_linha = ctk.CTkFrame(self.frame_lista_portais, height=30, corner_radius=0, fg_color=bg_linha)
+            frame_linha.pack(fill="x", side="top", pady=1)
+
+            # Reaproveita a variável se o portal já estava na tela; portal novo nasce marcado
+            # (ou com o estado salvo no config_app.json).
+            v_loc = self.dic_vars_locais.get(chave)
+            if v_loc is None:
+                v_loc = ctk.BooleanVar(value=config.PORTAIS_ATIVOS.get(chave, True))
+                self.dic_vars_locais[chave] = v_loc
+
+            chk = ctk.CTkCheckBox(frame_linha, text="", variable=v_loc, width=20, corner_radius=0)
+            chk.pack(side="left", padx=10, pady=4)
+
+            lbl_pname = ctk.CTkLabel(frame_linha, text=rotulo.upper(), font=ctk.CTkFont(family="Arial", size=10, weight="bold"), text_color="#e0e0e0")
+            lbl_pname.pack(side="left", padx=5, pady=4)
+
+    def atualizar_portais(self):
+        """Chamado quando a lista de editais é recarregada: portais novos aparecem sem mexer no código."""
+        self._montar_lista_portais()
+
+    # ------------------------------------------------------------------ calendário
     def selecionar_data_calendario(self, tipo):
         top_cal = ctk.CTkToplevel(self)
         top_cal.title("Calendario")
@@ -114,6 +134,7 @@ class SidebarFiltros(ctk.CTkFrame):
         btn_conf = ctk.CTkButton(top_cal, text="CONFIRMAR", corner_radius=0, font=ctk.CTkFont(family="Arial", size=11, weight="bold"), command=confirmar_data)
         btn_conf.pack(pady=5)
 
+    # ------------------------------------------------------------------ tags
     def renderizar_tags(self):
         for widget in self.scroll_tags.winfo_children():
             widget.destroy()
@@ -125,7 +146,7 @@ class SidebarFiltros(ctk.CTkFrame):
         linha_atual.pack(anchor="w", fill="x", pady=1)
 
         for tag_texto in self.lista_tags:
-            largura_estimada_tag = (len(tag_texto) * 8) + 42 
+            largura_estimada_tag = (len(tag_texto) * 8) + 42
 
             if largura_acumulada + largura_estimada_tag > LARGURA_MAXIMA_CONTAINER and largura_acumulada > 0:
                 linha_atual = ctk.CTkFrame(self.scroll_tags, fg_color="transparent")
@@ -161,3 +182,13 @@ class SidebarFiltros(ctk.CTkFrame):
         """Atualiza a lista local e redesenha as tags na tela após a limpeza."""
         self.lista_tags = list(config.PALAVRAS_CHAVE)
         self.renderizar_tags()
+
+    # ------------------------------------------------------------------ reset geral
+    def resetar_tudo(self):
+        """Volta a barra lateral ao estado 'sem filtros': datas, portais e tags."""
+        self.btn_min.configure(text="DATA INICIAL")
+        self.btn_max.configure(text="DATA FINAL")
+        for variavel in self.dic_vars_locais.values():
+            variavel.set(True)
+        self.entry_tag.delete(0, "end")
+        self.resetar_tags_visuais()

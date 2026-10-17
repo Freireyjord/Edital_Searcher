@@ -14,8 +14,7 @@ class AppSincronizador(ctk.CTk):
         super().__init__()
 
         self.title("Painel de Consulta de Editais")
-        self.geometry("1150x760") 
-        self.minsize(1000, 700)
+        self._ajustar_janela_a_tela()
 
         # Variáveis de controle do funil de filtros locais
         self.filtro_portais = {}      
@@ -61,8 +60,8 @@ class AppSincronizador(ctk.CTk):
 
         # Configura as proporções internas da primeira aba de resultados
         self.tab_resultados.grid_rowconfigure(0, weight=0) 
-        self.tab_resultados.grid_rowconfigure(1, weight=4) 
-        self.tab_resultados.grid_rowconfigure(2, weight=3) 
+        self.tab_resultados.grid_rowconfigure(1, weight=4, minsize=130)
+        self.tab_resultados.grid_rowconfigure(2, weight=3, minsize=120)
         self.tab_resultados.grid_columnconfigure(0, weight=0) 
         self.tab_resultados.grid_columnconfigure(1, weight=1) 
 
@@ -116,6 +115,42 @@ class AppSincronizador(ctk.CTk):
         aba_resultados.atualizar_tabela_local(self)
         self.after(2000, lambda: updater.verificar_e_aplicar_atualizacao(self.lbl_status, self))
 
+    def _ajustar_janela_a_tela(self):
+        """
+        Dimensiona a janela conforme a resolução e a escala do Windows (notebooks de baixa
+        resolução e escala 125%/150%): nunca maior que a tela e centralizada. Em telas pequenas
+        abre maximizada.
+        """
+        escala = 1.0
+        try:
+            escala = float(self._get_window_scaling())
+        except Exception:
+            try:
+                escala = self.winfo_fpixels("1i") / 96
+            except Exception:
+                pass
+        escala = escala or 1.0
+
+        tela_w, tela_h = self.winfo_screenwidth(), self.winfo_screenheight()   # pixels físicos
+        logica_w, logica_h = tela_w / escala, tela_h / escala
+
+        largura = int(min(1150, logica_w * 0.96))
+        altura = int(min(760, logica_h * 0.88))      # reserva espaço p/ barra de tarefas e título
+        self.minsize(min(820, largura), min(540, altura))
+
+        x = max(0, int((tela_w - largura * escala) / 2))
+        y = max(0, int((tela_h - altura * escala) / 2) - 20)
+        self.geometry(f"{largura}x{altura}+{x}+{y}")
+
+        if logica_w < 1280 or logica_h < 800:
+            self.after(150, self._maximizar)
+
+    def _maximizar(self):
+        try:
+            self.state("zoomed")
+        except Exception:
+            pass
+
     # ==============================================================================
     # 🎛️ MÉTODOS PONTES: REPASSAM O COMANDO PARA A LOGICA DENTRO DA PASTA VIEWS
     # ==============================================================================
@@ -140,11 +175,12 @@ class AppSincronizador(ctk.CTk):
                 getattr(config, "TAGS_RELATORIO", [])
             )
             self.filtro_portais = config.PORTAIS_ATIVOS
-            aba_resultados.atualizar_tabela_local(self)
+            aba_resultados.reaplicar_filtros_locais(self)
     def executar_acao_limpar(self):
-        """Limpa as variáveis globais de busca e reseta os componentes visuais da barra lateral."""
+        """Limpa TODOS os filtros (datas, portais e tags) e restaura a barra lateral."""
         self.filtro_data_min, self.filtro_data_max, self.filtro_portais = "", "", {}
         config.PALAVRAS_CHAVE = []
+        config.PORTAIS_ATIVOS = {}      # vazio = todos os portais habilitados (inclusive os novos)
         config.salvar_configuracoes_usuario(
             [], 
             config.PORTAIS_ATIVOS, 
@@ -153,22 +189,24 @@ class AppSincronizador(ctk.CTk):
             getattr(config, "TAGS_RELATORIO", [])
         )
         if self.sidebar_filtros:
-            self.sidebar_filtros.btn_min.configure(text="DATA INICIAL")
-            self.sidebar_filtros.btn_max.configure(text="DATA FINAL")
-            self.sidebar_filtros.resetar_tags_visuais()
-        aba_resultados.atualizar_tabela_local(self)
+            self.sidebar_filtros.resetar_tudo()
+        aba_resultados.reaplicar_filtros_locais(self)
 
     def atualizar_tabela_local(self):
         aba_resultados.atualizar_tabela_local(self)
 
     def acao_sincronizar(self):
-        """Dispara o comando manual de recarga e sincronização total da tabela de editais."""
+        """Recarrega a base de editais da nuvem em segundo plano."""
         self.btn_sincronizar.configure(state="disabled", text="ATUALIZANDO...")
-        self.lbl_status.configure(text="Status: Consultando base de editais no Supabase...")
-        aba_resultados.atualizar_tabela_local(self)
-        self.btn_sincronizar.configure(state="normal", text="ATUALIZAR TABELA")
-        self.lbl_status.configure(text="Status: Tabela sincronizada.")
-        messagebox.showinfo("Concluido", "Tabela atualizada com sucesso.")
+
+        def ao_concluir(erro):
+            self.btn_sincronizar.configure(state="normal", text="ATUALIZAR TABELA")
+            if erro is None:
+                messagebox.showinfo("Concluído", "Tabela atualizada com sucesso.")
+            else:
+                messagebox.showerror("Falha na atualização", f"Não foi possível consultar a base de editais:\n{erro}")
+
+        aba_resultados.atualizar_tabela_local(self, ao_concluir=ao_concluir)
 
     def evento_linha_selecionada(self, event):
         aba_resultados.exibir_resumo_linha_selecionada(self)
