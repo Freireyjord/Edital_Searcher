@@ -1,6 +1,6 @@
 import smtplib
 import threading
-import random
+import secrets
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from tkinter import messagebox
@@ -42,15 +42,19 @@ def construir_interface_aba_relatorio(tab_alvo, app_instancia):
         except Exception as e_nuvem:
             print(f"[Aviso] Não foi possível sincronizar dados da nuvem na inicialização: {e_nuvem}")
 
-    # Configura a grade da aba principal para expandir horizontalmente
+    # Painel rolável: em telas pequenas o conteúdo rola em vez de ficar cortado
     tab_alvo.grid_columnconfigure(0, weight=1)
     tab_alvo.grid_rowconfigure(0, weight=1)
 
-    frame_central = ctk.CTkFrame(tab_alvo, border_width=1, border_color="#3a3d42")
-    frame_central.grid(row=0, column=0, padx=15, pady=15, sticky="nsew")
-    
-    frame_central.grid_columnconfigure(0, weight=1, minsize=450)
-    frame_central.grid_columnconfigure(1, weight=1, minsize=450)
+    rolagem = ctk.CTkScrollableFrame(tab_alvo, corner_radius=0, fg_color="transparent")
+    rolagem.grid(row=0, column=0, sticky="nsew")
+    rolagem.grid_columnconfigure(0, weight=1)
+
+    frame_central = ctk.CTkFrame(rolagem, border_width=1, border_color="#3a3d42")
+    frame_central.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+
+    frame_central.grid_columnconfigure(0, weight=1, minsize=300)
+    frame_central.grid_columnconfigure(1, weight=1, minsize=300)
     frame_central.grid_rowconfigure(0, weight=1)
 
     # ==============================================================================
@@ -72,21 +76,21 @@ def construir_interface_aba_relatorio(tab_alvo, app_instancia):
     lbl_mail = ctk.CTkLabel(panel_esquerdo, text="Seu endereço de E-mail Destinatário:", font=ctk.CTkFont(family="Arial", size=11, weight="bold"))
     lbl_mail.pack(anchor="w", pady=(5, 2))
 
-    entry_email = ctk.CTkEntry(panel_esquerdo, width=420, placeholder_text="seu_email@fieb.org.br", corner_radius=0, font=("Arial", 11))
-    entry_email.pack(anchor="w", pady=(0, 10))
+    entry_email = ctk.CTkEntry(panel_esquerdo, placeholder_text="seu_email@fieb.org.br", corner_radius=0, font=("Arial", 11))
+    entry_email.pack(fill="x", pady=(0, 10))
     entry_email.insert(0, email_banco)
 
     var_filtrar_tags = ctk.BooleanVar(value=chk_banco)
     chk_filtrar_tags = ctk.CTkCheckBox(panel_esquerdo, text="Filtrar e-mail usando as tags exclusivas do relatório\n(Caso desmarcado, enviará todas as novas capturas)", variable=var_filtrar_tags, corner_radius=0, font=ctk.CTkFont(family="Arial", size=11))
     chk_filtrar_tags.pack(anchor="w", pady=(10, 15))
 
-    ctk.CTkFrame(panel_esquerdo, height=2, fg_color="#3a3d42", width=420).pack(anchor="w", pady=10)
+    ctk.CTkFrame(panel_esquerdo, height=2, fg_color="#3a3d42").pack(fill="x", pady=10)
 
-    btn_salvar = ctk.CTkButton(panel_esquerdo, text="SALVAR PREFERÊNCIAS", corner_radius=0, font=ctk.CTkFont(family="Arial", size=11, weight="bold"), fg_color="#27ae60", hover_color="#219653", width=420, height=32, command=lambda: _acao_salvar_config_relatorio(entry_email, var_filtrar_tags, app_instancia))
-    btn_salvar.pack(anchor="w", pady=4)
+    btn_salvar = ctk.CTkButton(panel_esquerdo, text="SALVAR PREFERÊNCIAS", corner_radius=0, font=ctk.CTkFont(family="Arial", size=11, weight="bold"), fg_color="#27ae60", hover_color="#219653", height=32, command=lambda: _acao_salvar_config_relatorio(entry_email, var_filtrar_tags, app_instancia))
+    btn_salvar.pack(fill="x", pady=4)
 
-    _btn_enviar_manual = ctk.CTkButton(panel_esquerdo, text="ATIVAÇÃO DO E-MAIL / ENVIO IMEDIATO DE RELATÓRIO", corner_radius=0, font=ctk.CTkFont(family="Arial", size=11, weight="bold"), fg_color="#1f6aa5", hover_color="#144e78", width=420, height=32, command=lambda: _acao_enviar_relatorio_manual_thread(app_instancia, entry_email))
-    _btn_enviar_manual.pack(anchor="w", pady=4)
+    _btn_enviar_manual = ctk.CTkButton(panel_esquerdo, text="ATIVAÇÃO DO E-MAIL / ENVIO IMEDIATO DE RELATÓRIO", corner_radius=0, font=ctk.CTkFont(family="Arial", size=11, weight="bold"), fg_color="#1f6aa5", hover_color="#144e78", height=32, command=lambda: _acao_enviar_relatorio_manual_thread(app_instancia, entry_email))
+    _btn_enviar_manual.pack(fill="x", pady=4)
 
     btn_cancelar_assinatura = ctk.CTkButton(
         panel_esquerdo, 
@@ -95,11 +99,11 @@ def construir_interface_aba_relatorio(tab_alvo, app_instancia):
         font=ctk.CTkFont(family="Arial", size=11, weight="bold"), 
         fg_color="#c0392b", 
         hover_color="#962d22", 
-        width=420, 
+        
         height=32, 
         command=lambda: _acao_solicitar_cancelamento(entry_email, app_instancia)
     )
-    btn_cancelar_assinatura.pack(anchor="w", pady=(15, 4))
+    btn_cancelar_assinatura.pack(fill="x", pady=(15, 4))
     # ==============================================================================
     # 🏷️ PAINEL DA DIREITA: GERENCIAMENTO DE TAGS EXCLUSIVAS
     # ==============================================================================
@@ -121,6 +125,24 @@ def construir_interface_aba_relatorio(tab_alvo, app_instancia):
     _entry_tag_widget.bind(",", lambda e: _adicionar_tag_relatorio_evt())
 
     _renderizar_tags_relatorio_tela()
+
+    # Janela estreita (< 820 px): painel de tags passa para baixo do formulário
+    estado_layout = {"estreito": None}
+
+    def _reorganizar_layout(event=None):
+        estreito = tab_alvo.winfo_width() < 820
+        if estreito == estado_layout["estreito"]:
+            return
+        estado_layout["estreito"] = estreito
+        if estreito:
+            panel_direito.grid_configure(row=1, column=0)
+            frame_central.grid_columnconfigure(1, weight=0, minsize=0)
+        else:
+            panel_direito.grid_configure(row=0, column=1)
+            frame_central.grid_columnconfigure(1, weight=1, minsize=300)
+
+    tab_alvo.bind("<Configure>", _reorganizar_layout, add="+")
+
 
 def _renderizar_tags_relatorio_tela():
     global _lista_tags_memoria, _scroll_container
@@ -214,38 +236,52 @@ def _acao_salvar_config_relatorio(entry_email, var_filtrar_tags, app_instancia):
         else:
             messagebox.showerror("Erro de Sincronização", f"Não foi possível conectar ao servidor do Supabase:\n{e}")
 
+def _ui(app, fn):
+    """Executa fn na thread principal do Tkinter (widgets e messagebox não são thread-safe)."""
+    try:
+        app.after(0, fn)
+    except Exception:
+        pass   # janela fechada
+
+
 def _acao_enviar_relatorio_manual_thread(app_instancia, entry_email_widget):
     global _btn_enviar_manual
+    # Lê o widget AQUI (thread da UI), não dentro da thread de envio.
+    email_atual = entry_email_widget.get().strip()
+    if not email_atual or "@" not in email_atual:
+        messagebox.showerror("E-mail Inválido", "Por favor, digite um e-mail válido no campo de texto antes de solicitar o envio.")
+        return
+
+    if not email_engine.smtp_configurado():
+        messagebox.showerror(
+            "E-mail não configurado",
+            "O envio de e-mails não está configurado nesta máquina (arquivo smtp_config.json ausente).\n"
+            "Procure o responsável pelo PCE."
+        )
+        return
+
     _btn_enviar_manual.configure(state="disabled", text="ENVIANDO RELATÓRIO...")
     app_instancia.lbl_status.configure(text="Status: Compilando editais dos últimos 7 dias...")
-    
-    thread_envio = threading.Thread(target=lambda: _executar_envio_manual_background(app_instancia, entry_email_widget))
-    thread_envio.daemon = True
+
+    thread_envio = threading.Thread(target=lambda: _executar_envio_manual_background(app_instancia, email_atual), daemon=True)
     thread_envio.start()
 
-def _executar_envio_manual_background(app_instancia, entry_email_widget):
-    global _btn_enviar_manual
+
+def _executar_envio_manual_background(app_instancia, email_atual):
+    def log(msg):
+        _ui(app_instancia, lambda: app_instancia.lbl_status.configure(text=f"Status: {msg}"))
+
     try:
-        email_atual = entry_email_widget.get().strip()
-
-        if not email_atual or "@" not in email_atual:
-            messagebox.showerror("E-mail Inválido", "Por favor, digite um e-mail válido no campo de texto antes de solicitar o envio.")
-            return
-
-        sucesso = email_engine.compilar_e_enviar_relatorio_semanal(
-            email_alvo=email_atual, 
-            log_func=lambda msg: app_instancia.lbl_status.configure(text=f"Status: {msg}")
-        )
-        
+        sucesso = email_engine.compilar_e_enviar_relatorio_semanal(email_alvo=email_atual, log_func=log)
         if sucesso:
-            messagebox.showinfo("Sucesso", f"O relatório semanal foi enviado com sucesso para {email_atual}!")
+            _ui(app_instancia, lambda: messagebox.showinfo("Sucesso", f"O relatório semanal foi enviado com sucesso para {email_atual}!"))
         else:
-            messagebox.showwarning("Aviso", "O relatório não pôde ser enviado. Verifique se existem editais ativos nos últimos 7 dias com as tags selecionadas.")
-            
+            _ui(app_instancia, lambda: messagebox.showwarning("Aviso", "O relatório não foi enviado. Verifique se existem editais novos nos últimos 7 dias (e que correspondam às tags selecionadas)."))
     except Exception as err:
-        messagebox.showerror("Erro de Disparo", f"Falha interna ao tentar acionar o motor de e-mails: {err}")
+        _ui(app_instancia, lambda e=err: messagebox.showerror("Erro de Disparo", f"Falha interna ao tentar acionar o motor de e-mails: {e}"))
     finally:
-        _btn_enviar_manual.configure(state="normal", text="ATIVAÇÃO DO E-MAIL / ENVIO IMEDIATO DE RELATÓRIO")
+        _ui(app_instancia, lambda: _btn_enviar_manual.configure(state="normal", text="ATIVAÇÃO DO E-MAIL / ENVIO IMEDIATO DE RELATÓRIO"))
+
 
 def _acao_solicitar_cancelamento(entry_email, app_instancia):
     email_digitado = entry_email.get().strip().lower()
@@ -254,13 +290,21 @@ def _acao_solicitar_cancelamento(entry_email, app_instancia):
         messagebox.showerror("E-mail Inválido", "Por favor, digite o seu e-mail cadastrado para poder cancelar.")
         return
 
+    if not email_engine.smtp_configurado():
+        messagebox.showerror(
+            "E-mail não configurado",
+            "O envio de e-mails não está configurado nesta máquina (arquivo smtp_config.json ausente).\n"
+            "Procure o responsável pelo PCE."
+        )
+        return
+
     try:
         checar = config.supabase.table("configuracoes_relatorio").select("id").eq("email_destino", email_digitado).execute()
         if not checar.data:
             messagebox.showwarning("Não Localizado", f"O e-mail '{email_digitado}' não possui uma assinatura ativa no sistema.")
             return
 
-        token_gerado = str(random.randint(100000, 999999))
+        token_gerado = str(secrets.randbelow(900000) + 100000)   # CSPRNG (random não é seguro p/ tokens)
         config.supabase.table("configuracoes_relatorio").update({"token_cancelamento": token_gerado}).eq("email_destino", email_digitado).execute()
 
         msg_corpo = f"""
