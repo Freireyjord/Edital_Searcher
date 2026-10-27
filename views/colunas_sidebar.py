@@ -15,8 +15,7 @@ class SidebarColunas(ctk.CTkFrame):
         self.colunas_info = {
             "titulo": "Título do Edital",
             "portal": "Portal de Origem",
-            "datas": "Prazo / Submissão",
-            "vigencia_projeto": "Vigência",
+            "prazo_iso": "Prazo de Submissão",
             "palavra_chave": "Termos Correspondentes"
         }
 
