@@ -11,8 +11,6 @@ import unicodedata
 from datetime import date, datetime
 
 STATUS_VISIVEL = "concluido"
-_SEM_PRAZO = "9999-12-31 23:59"   # só para ordenação (e compatibilidade com registros antigos)
-
 
 def normalizar_texto(texto):
     """Remove acentos, converte para minúsculo e limpa espaços extras."""
@@ -66,42 +64,14 @@ def _parse_data_br(valor):
     except ValueError:
         return None
 
-
-def _texto_prazo(edital, dt_item):
-    """Texto exibido na coluna de prazo."""
-    if dt_item:
-        return f"Até {dt_item.strftime('%d/%m/%Y')}"
-
-    bruto = edital.get("datas") or ""
-    baixo = bruto.lower()
-    if "contínuo" in baixo or "continuo" in baixo or "fluxo" in baixo:
-        return "Fluxo Contínuo"
-
-    texto = bruto.replace("Envio de propostas ", "").strip()
-    for corte in (", às", ", as"):
-        if corte in texto:
-            texto = texto.split(corte)[0]
-            break
-    return texto.strip() or "A consultar"
-
-
-def _chave_prazo(edital):
-    return edital.get("prazo_iso") or _SEM_PRAZO
-
-
 def aplicar_filtros(editais, portais=None, data_min="", data_max="", palavras_chave=None, hoje=None):
-    """
-    Retorna lista de (qtd_tags_encontradas, valores_das_colunas, edital),
-    já ordenada para exibição.
-    """
+    """Retorna lista de editais filtrada e estruturada sem a coluna 'datas'."""
     hoje = hoje or date.today()
     dt_min, dt_max = _parse_data_br(data_min), _parse_data_br(data_max)
     palavras = [p for p in (palavras_chave or []) if p and p.strip()]
-    termos_usuario = [normalizar_texto(p) for p in palavras]
-    termos_usuario = [t for t in termos_usuario if t]
 
     resultado = []
-    for edital in sorted(editais, key=_chave_prazo):
+    for edital in editais:
         if str(edital.get("status_ia") or "").strip().lower() != STATUS_VISIVEL:
             continue
 
@@ -110,7 +80,11 @@ def aplicar_filtros(editais, portais=None, data_min="", data_max="", palavras_ch
             continue
 
         dt_item = _parse_data_iso(edital.get("prazo_iso"))
-        if dt_item and (dt_item < hoje or (dt_min and dt_item < dt_min) or (dt_max and dt_item > dt_max)):
+        
+        if dt_item is None or dt_item < hoje:
+            continue
+
+        if (dt_min and dt_item < dt_min) or (dt_max and dt_item > dt_max):
             continue
 
         titulo_norm = normalizar_texto(edital.get("titulo", ""))
@@ -125,17 +99,16 @@ def aplicar_filtros(editais, portais=None, data_min="", data_max="", palavras_ch
                 if palavra not in encontradas:
                     encontradas.append(palavra)
 
-        if termos_usuario and not encontradas:
+        if palavras and not encontradas:
             continue
 
         valores = {
             "titulo": edital.get("titulo") or "Edital sem título",
             "portal": portal,
-            "datas": _texto_prazo(edital, dt_item),
-            "vigencia_projeto": edital.get("vigencia_projeto") or "N/A",
+            "prazo_iso": edital.get("prazo_iso"),
             "palavra_chave": ", ".join(encontradas) if encontradas else "Geral / Amplo",
         }
         resultado.append((len(encontradas), valores, edital))
 
-    resultado.sort(key=lambda x: x[0], reverse=True)   # estável: mantém ordem de prazo nos empates
+    resultado.sort(key=lambda x: x[0], reverse=True)   
     return resultado
