@@ -4,17 +4,13 @@ from core import config
 
 # Só o necessário para listar. NUNCA usar select("*"): a tabela guarda o texto bruto dos
 # editais e PDFs (texto_extracao, centenas de milhares de caracteres por linha).
-COLUNAS_LISTA = "url,portal,titulo,datas,prazo_iso,vigencia_projeto,tags_ia,status_ia"
+COLUNAS_LISTA = "url,portal,titulo,prazo_iso,vigencia_projeto,tags_ia,status_ia"
 COLUNAS_DETALHE = "escopo,pesquisa,subvencao"
 
-TAMANHO_PAGINA = 1000   # limite padrão do PostgREST por requisição
-
+TAMANHO_PAGINA = 1000   
 
 def buscar_editais_visiveis():
-    """
-    Editais CONCLUIDOS e ainda abertos (ou sem prazo), paginando para não
-    esbarrar no limite de 1000 linhas por consulta.
-    """
+    """Editais CONCLUIDOS e ainda abertos (com prazo válido), paginando os dados."""
     hoje = date.today().isoformat()
     editais, inicio = [], 0
     while True:
@@ -22,9 +18,9 @@ def buscar_editais_visiveis():
             config.supabase.table("editais")
             .select(COLUNAS_LISTA)
             .eq("status_ia", "CONCLUIDO")
-            .or_(f"prazo_iso.is.null,prazo_iso.gte.{hoje}")
+            .gte("prazo_iso", hoje)
             .order("created_at", desc=True)
-            .order("url")                       # desempate: paginação estável
+            .order("url")                       
             .range(inicio, inicio + TAMANHO_PAGINA - 1)
             .execute()
         )
